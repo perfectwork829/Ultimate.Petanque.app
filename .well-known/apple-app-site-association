@@ -1,0 +1,30 @@
+{
+  "applinks": {
+    "apps": [],
+    "details": [
+      {
+        "appID": "YOUR_TEAM_ID.com.ultimatepetanque.app",
+        "paths": [
+          "/share/*",
+          "/meetup/*",
+          "/event/*",
+          "/partner/*",
+          "/join/*"
+        ],
+        "comment": "Replace YOUR_TEAM_ID with your Apple Team ID (10-char alphanumeric) from developer.apple.com > Membership > Team ID. Example: AB12CD34EF.com.ultimatepetanque.app"
+      }
+    ]
+  },
+  "webcredentials": {
+    "apps": [
+      "YOUR_TEAM_ID.com.ultimatepetanque.app"
+    ],
+    "comment": "Enables AutoFill credential sharing between app and website"
+  },
+  "activitycontinuation": {
+    "apps": [
+      "YOUR_TEAM_ID.com.ultimatepetanque.app"
+    ],
+    "comment": "Enables Handoff between devices"
+  }
+}

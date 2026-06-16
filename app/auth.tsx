@@ -1,0 +1,95 @@
+import React, { useEffect, useState } from 'react';
+import { View, ActivityIndicator, Text, StyleSheet } from 'react-native';
+import { router } from 'expo-router';
+import * as Linking from 'expo-linking';
+import * as QueryParams from 'expo-auth-session/build/QueryParams';
+import { getSupabaseClient } from '@/template';
+import theme from '@/constants/theme';
+
+/**
+ * Handles Supabase email links (signup / magic link / PKCE) opened via onspaceapp://auth
+ * or exp://.../--/auth in Expo Go. Sign-up in the app normally uses the numeric OTP field on /login.
+ */
+export default function AuthCallbackScreen() {
+  const [message, setMessage] = useState('Signing you in…');
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const finish = (path: '/' | '/login' = '/') => {
+      if (!cancelled) router.replace(path);
+    };
+
+    const handleUrl = async (url: string) => {
+      try {
+        const supabase = getSupabaseClient();
+        const { params, errorCode } = QueryParams.getQueryParams(url);
+
+        if (errorCode) {
+          setMessage('Sign-in link expired or invalid. Use the code from your email on the login screen.');
+          setTimeout(() => finish('/login'), 2500);
+          return;
+        }
+
+        const code = typeof params.code === 'string' ? params.code : null;
+        if (code) {
+          const { error } = await supabase.auth.exchangeCodeForSession(code);
+          if (error) throw error;
+          finish('/');
+          return;
+        }
+
+        const accessToken = typeof params.access_token === 'string' ? params.access_token : null;
+        const refreshToken = typeof params.refresh_token === 'string' ? params.refresh_token : null;
+        if (accessToken && refreshToken) {
+          const { error } = await supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken,
+          });
+          if (error) throw error;
+          finish('/');
+          return;
+        }
+
+        setMessage('Open the app and enter the verification code from your email (not the browser link).');
+        setTimeout(() => finish('/login'), 3000);
+      } catch {
+        setMessage('Could not complete sign-in from the link. Enter the code from your email on the login screen.');
+        setTimeout(() => finish('/login'), 3000);
+      }
+    };
+
+    Linking.getInitialURL()
+      .then((url) => {
+        if (url && (url.includes('auth') || url.includes('access_token') || url.includes('code='))) {
+          handleUrl(url);
+        } else {
+          finish('/');
+        }
+      })
+      .catch(() => finish('/'));
+
+    const sub = Linking.addEventListener('url', ({ url }) => {
+      if (url.includes('auth') || url.includes('access_token') || url.includes('code=')) {
+        handleUrl(url);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+      sub.remove();
+    };
+  }, []);
+
+  return (
+    <View style={styles.container}>
+      <ActivityIndicator size="large" color={theme.primary} />
+      <Text style={styles.text}>{message}</Text>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, backgroundColor: '#FFF' },
+  text: { marginTop: 16, fontSize: 14, color: theme.textSecondary, textAlign: 'center' },
+});

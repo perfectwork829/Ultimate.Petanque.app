@@ -1,0 +1,198 @@
+# ============================================
+# Flow 02: Tab Navigation & Screen Transitions
+# ============================================
+# Tests: 4 main tabs, screen transitions, back navigation, deep page access
+#
+# Prerequisites:
+#   - User is logged in (run 01-login-flow.yaml first)
+
+appId: com.ultimatepetanque.app
+
+---
+
+# ============================================
+# Phase 1: Home Tab (Default)
+# ============================================
+
+- launchApp:
+    clearState: false
+
+# Verify home tab is active and content loaded
+- assertVisible:
+    text: ".*Accueil.*|.*Home.*"
+    timeout: 10000
+
+# Verify key home components are present
+- assertVisible:
+    text: ".*Match.*|.*Défi.*|.*Challenge.*"
+    timeout: 5000
+
+# ============================================
+# Phase 2: Stats Tab
+# ============================================
+
+- tapOn:
+    text: "Stats"
+
+# Verify stats screen loaded
+- assertVisible:
+    text: ".*Statistiques.*|.*Statistics.*|.*Performance.*"
+    timeout: 5000
+
+# Verify filter chips are visible
+- assertVisible:
+    text: ".*Tir.*|.*Point.*|.*Erreur.*|.*Error.*"
+    timeout: 3000
+
+# ============================================
+# Phase 3: Directory Tab
+# ============================================
+
+- tapOn:
+    text: ".*Annuaire.*|.*Directory.*"
+
+# Verify directory loaded with tabs
+- assertVisible:
+    text: ".*Joueurs.*|.*Players.*|.*Clubs.*"
+    timeout: 5000
+
+# Switch between directory sub-tabs
+- tapOn:
+    text: "Clubs"
+- assertVisible:
+    text: ".*club.*|.*Club.*"
+    timeout: 3000
+
+- tapOn:
+    text: ".*Terrains.*"
+- assertVisible:
+    text: ".*terrain.*|.*Terrain.*"
+    timeout: 3000
+
+# Return to Players tab
+- tapOn:
+    text: ".*Joueurs.*|.*Players.*"
+
+# ============================================
+# Phase 4: Map Tab
+# ============================================
+
+- tapOn:
+    text: ".*Carte.*|.*Map.*"
+
+# Verify map loaded (map container visible)
+- assertVisible:
+    text: ".*Carte.*|.*Map.*|.*terrain.*"
+    timeout: 8000
+
+# ============================================
+# Phase 5: Navigate to Deep Pages from Home
+# ============================================
+
+# Return to home
+- tapOn:
+    text: ".*Accueil.*|.*Home.*"
+
+# Navigate to Profile
+- runFlow:
+    when:
+      visible:
+        id: "profile-avatar"
+    commands:
+      - tapOn:
+          id: "profile-avatar"
+      - assertVisible:
+          text: ".*Profil.*|.*Profile.*|.*Compte.*|.*Account.*"
+          timeout: 5000
+      - back
+
+# Navigate to History
+- scrollUntilVisible:
+    element:
+      text: ".*Historique.*|.*History.*|.*Voir tout.*|.*See all.*"
+    direction: DOWN
+    timeout: 8000
+
+- tapOn:
+    text: ".*Historique.*|.*History.*|.*Voir tout.*|.*See all.*"
+
+- assertVisible:
+    text: ".*Historique.*|.*History.*"
+    timeout: 5000
+
+- back
+
+# ============================================
+# Phase 6: Navigate to Leaderboard
+# ============================================
+
+- tapOn:
+    text: ".*Accueil.*|.*Home.*"
+
+- scrollUntilVisible:
+    element:
+      text: ".*Classement.*|.*Leaderboard.*|.*Ranking.*"
+    direction: DOWN
+    timeout: 8000
+
+- runFlow:
+    when:
+      visible: ".*Classement.*|.*Leaderboard.*"
+    commands:
+      - tapOn:
+          text: ".*Classement.*|.*Leaderboard.*"
+      - assertVisible:
+          text: ".*Classement.*|.*Leaderboard.*|.*Ranking.*"
+          timeout: 5000
+      - back
+
+# ============================================
+# Phase 7: Navigate to Badges
+# ============================================
+
+- tapOn:
+    text: ".*Accueil.*|.*Home.*"
+
+- scrollUntilVisible:
+    element:
+      text: ".*Badges.*|.*badge.*"
+    direction: DOWN
+    timeout: 8000
+
+- runFlow:
+    when:
+      visible: ".*Badges.*|.*badge.*"
+    commands:
+      - tapOn:
+          text: ".*Badges.*|.*badge.*"
+      - assertVisible:
+          text: ".*Badge.*"
+          timeout: 5000
+      - back
+
+# ============================================
+# Phase 8: Tab State Preservation
+# ============================================
+
+# Go to Stats tab
+- tapOn:
+    text: "Stats"
+- assertVisible:
+    text: ".*Performance.*|.*Statistiques.*"
+    timeout: 3000
+
+# Switch to Directory, then back to Stats — should preserve state
+- tapOn:
+    text: ".*Annuaire.*|.*Directory.*"
+- tapOn:
+    text: "Stats"
+- assertVisible:
+    text: ".*Performance.*|.*Statistiques.*"
+    timeout: 3000
+
+# Return to Home for next flow
+- tapOn:
+    text: ".*Accueil.*|.*Home.*"
+- assertVisible:
+    text: ".*Accueil.*|.*Home.*"
+    timeout: 3000

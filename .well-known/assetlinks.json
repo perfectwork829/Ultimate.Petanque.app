@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.ultimatepetanque.app",
+      "sha256_cert_fingerprints": [
+        "YOUR_SHA256_FINGERPRINT — Run: keytool -list -v -keystore your-keystore.jks | grep SHA256 — Or from Google Play Console > Setup > App signing > SHA-256 certificate fingerprint. Format: XX:XX:XX:...:XX (32 hex pairs separated by colons)"
+      ]
+    }
+  }
+]

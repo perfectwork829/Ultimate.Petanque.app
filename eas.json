@@ -1,0 +1,43 @@
+{
+  "cli": {
+    "version": ">= 12.0.0"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal"
+    },
+    "preview": {
+      "android": {
+        "buildType": "apk",
+        "image": "latest"
+      },
+      "distribution": "internal",
+      "env": {
+        "EXPO_NO_TELEMETRY": "1"
+      }
+    },
+    "production": {
+      "android": {
+        "buildType": "app-bundle",
+        "image": "latest"
+      },
+      "autoIncrement": true,
+      "env": {
+        "EXPO_NO_TELEMETRY": "1"
+      }
+    }
+  },
+  "submit": {
+    "production": {
+      "ios": {
+        "appleId": "YOUR_APPLE_ID_EMAIL — Apple Developer account email (developer.apple.com)",
+        "ascAppId": "YOUR_ASC_APP_ID — App Store Connect > App > General > App Information > Apple ID (numeric, e.g. 1234567890)",
+        "appleTeamId": "YOUR_TEAM_ID — developer.apple.com > Membership > Team ID (10-char alphanumeric, e.g. AB12CD34EF)"
+      },
+      "android": {
+        "serviceAccountKeyPath": "./google-service-account.json — Google Play Console > Setup > API access > Service account > Download JSON key"
+      }
+    }
+  }
+}

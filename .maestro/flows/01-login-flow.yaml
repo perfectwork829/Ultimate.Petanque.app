@@ -1,0 +1,174 @@
+# ============================================
+# Flow 01: Login & Authentication
+# ============================================
+# Tests: OTP registration, password login, session persistence, logout
+#
+# Prerequisites:
+#   - App freshly installed (no cached session)
+#   - Test email must be a valid account or use sandbox OTP
+#
+# Note: In sandbox/test environments, the OTP code is typically "1234"
+# For production testing, use a real email and manually enter the OTP
+
+appId: com.ultimatepetanque.app
+
+---
+
+# ============================================
+# Phase 1: App Launch & Onboarding
+# ============================================
+
+- launchApp:
+    clearState: true
+
+# Wait for app to load (onboarding or login screen)
+- assertVisible:
+    text: ".*"
+    timeout: 10000
+
+# If onboarding is shown, swipe through it
+- runFlow:
+    when:
+      visible: "Commencer"
+    commands:
+      # Swipe through 3 onboarding screens
+      - swipe:
+          direction: LEFT
+          duration: 300
+      - swipe:
+          direction: LEFT
+          duration: 300
+      - tapOn: "Commencer"
+
+# ============================================
+# Phase 2: Registration with OTP + Password
+# ============================================
+
+# Should be on login screen
+- assertVisible:
+    text: ".*email.*|.*Email.*|.*connexion.*|.*Connexion.*"
+    timeout: 5000
+
+# Enter email
+- tapOn:
+    id: "email-input"
+    optional: true
+- inputText: ${TEST_EMAIL}
+
+# Tap "Send OTP" / "Envoyer le code"
+- tapOn:
+    text: ".*code.*|.*OTP.*|.*Envoyer.*|.*Send.*"
+
+# Wait for OTP screen
+- assertVisible:
+    text: ".*vérification.*|.*verification.*|.*code.*"
+    timeout: 10000
+
+# Enter OTP code (4 digits)
+- inputText: ${TEST_OTP}
+
+# Enter password
+- tapOn:
+    id: "password-input"
+    optional: true
+- inputText: ${TEST_PASSWORD}
+
+# Confirm password (registration flow)
+- tapOn:
+    id: "confirm-password-input"
+    optional: true
+- inputText: ${TEST_PASSWORD}
+
+# Submit
+- tapOn:
+    text: ".*Valider.*|.*Confirm.*|.*Se connecter.*|.*Sign.*"
+
+# ============================================
+# Phase 3: Verify Login Success
+# ============================================
+
+# Should redirect to home tab (wait for home content)
+- assertVisible:
+    text: ".*Accueil.*|.*Home.*|.*Bienvenue.*|.*Welcome.*"
+    timeout: 15000
+
+# Verify bottom tab bar is visible
+- assertVisible:
+    text: ".*Stats.*"
+
+# ============================================
+# Phase 4: Session Persistence
+# ============================================
+
+# Close and reopen app
+- stopApp
+- launchApp:
+    clearState: false
+
+# Should still be logged in (no login screen)
+- assertVisible:
+    text: ".*Accueil.*|.*Home.*|.*Stats.*"
+    timeout: 10000
+
+# ============================================
+# Phase 5: Logout
+# ============================================
+
+# Navigate to profile
+- tapOn:
+    text: ".*Profil.*|.*Profile.*"
+    optional: true
+
+# If profile is not in tab bar, look for avatar/settings icon
+- runFlow:
+    when:
+      visible:
+        id: "profile-button"
+    commands:
+      - tapOn:
+          id: "profile-button"
+
+# Scroll down to find logout button
+- scrollUntilVisible:
+    element:
+      text: ".*Déconnexion.*|.*Logout.*|.*Se déconnecter.*|.*Sign out.*"
+    direction: DOWN
+    timeout: 10000
+
+- tapOn:
+    text: ".*Déconnexion.*|.*Logout.*|.*Se déconnecter.*|.*Sign out.*"
+
+# Confirm logout if dialog appears
+- runFlow:
+    when:
+      visible: ".*Confirmer.*|.*Confirm.*|.*Oui.*|.*Yes.*"
+    commands:
+      - tapOn:
+          text: ".*Confirmer.*|.*Confirm.*|.*Oui.*|.*Yes.*"
+
+# Should return to login screen
+- assertVisible:
+    text: ".*email.*|.*Email.*|.*connexion.*|.*Connexion.*"
+    timeout: 10000
+
+# ============================================
+# Phase 6: Login with Existing Account
+# ============================================
+
+- tapOn:
+    id: "email-input"
+    optional: true
+- inputText: ${TEST_EMAIL}
+
+- tapOn:
+    id: "password-input"
+    optional: true
+- inputText: ${TEST_PASSWORD}
+
+- tapOn:
+    text: ".*Se connecter.*|.*Sign in.*|.*Connexion.*|.*Login.*"
+
+# Verify successful login
+- assertVisible:
+    text: ".*Accueil.*|.*Home.*|.*Stats.*"
+    timeout: 15000

@@ -1,0 +1,13 @@
+<!--
+  Paste into Supabase Dashboard → Authentication → Email Templates → Magic Link
+  Project: https://supabase.com/dashboard/project/xzkdtudhtprpuzlamjdt/auth/templates
+
+  Ultimate Petanque uses numeric OTP in the app (6 digits — match Auth → Email → OTP length).
+  Also set URL configuration:
+    Site URL: onspaceapp://auth  (or https://ultimatepetanque.app)
+    Redirect URLs: onspaceapp://auth, onspaceapp://**, exp://**/--/auth
+-->
+<h2>Ultimate Petanque — verification code</h2>
+<p>Enter this code in the app:</p>
+<p style="font-size: 24px; font-weight: bold; letter-spacing: 4px;">{{ .Token }}</p>
+<p>This code expires shortly. If you did not request it, you can ignore this email.</p>

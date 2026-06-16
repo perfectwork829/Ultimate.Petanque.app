@@ -1,0 +1,226 @@
+# ============================================
+# Flow 03: Match Creation & Scoring
+# ============================================
+# Tests: New match flow, team setup, end-by-end scoring, save, verify in history
+#
+# Prerequisites:
+#   - User is logged in with at least 1 player created
+#   - Run 01-login-flow.yaml first
+
+appId: com.ultimatepetanque.app
+
+---
+
+# ============================================
+# Phase 1: Open New Match Screen
+# ============================================
+
+- launchApp:
+    clearState: false
+
+# Wait for home to load
+- assertVisible:
+    text: ".*Accueil.*|.*Home.*"
+    timeout: 10000
+
+# Tap "New Match" button (could be FAB, quick action, or menu)
+- tapOn:
+    text: ".*Nouveau match.*|.*New match.*|.*Nouvelle partie.*|.*New game.*"
+    optional: true
+
+# If the button text doesn't match, try the FAB or plus icon
+- runFlow:
+    when:
+      notVisible: ".*Format.*|.*format.*"
+    commands:
+      - tapOn:
+          id: "new-match-button"
+          optional: true
+      - tapOn:
+          id: "fab-button"
+          optional: true
+
+# ============================================
+# Phase 2: Configure Match Settings
+# ============================================
+
+# Should see match creation form
+- assertVisible:
+    text: ".*Format.*|.*format.*|.*Nouveau match.*"
+    timeout: 5000
+
+# Select format: Doublette
+- tapOn:
+    text: "Doublette"
+    optional: true
+
+# Select mode: Entraînement
+- tapOn:
+    text: ".*Entraînement.*|.*Training.*"
+    optional: true
+
+# ============================================
+# Phase 3: Setup Teams
+# ============================================
+
+# Team A setup — add player
+- scrollUntilVisible:
+    element:
+      text: ".*Équipe A.*|.*Team A.*|.*joueur.*|.*player.*"
+    direction: DOWN
+    timeout: 5000
+
+# Tap to add player to Team A
+- tapOn:
+    text: ".*Ajouter.*|.*Add.*"
+    optional: true
+    index: 0
+
+# Select a player from picker (first available)
+- runFlow:
+    when:
+      visible: ".*Sélectionner.*|.*Select.*"
+    commands:
+      # Pick the first player in the list
+      - tapOn:
+          index: 0
+          point: "50%,30%"
+
+# Team B setup
+- scrollUntilVisible:
+    element:
+      text: ".*Équipe B.*|.*Team B.*"
+    direction: DOWN
+    timeout: 5000
+
+# Add opponent name directly
+- tapOn:
+    text: ".*Adversaire.*|.*Opponent.*|.*Ajouter.*|.*Add.*"
+    optional: true
+    index: 1
+
+- runFlow:
+    when:
+      visible:
+        id: "opponent-name-input"
+    commands:
+      - tapOn:
+          id: "opponent-name-input"
+      - inputText: ${TEST_OPPONENT_NAME}
+
+# ============================================
+# Phase 4: Start Match & Score Ends
+# ============================================
+
+# Tap "Start" or "Commencer"
+- tapOn:
+    text: ".*Commencer.*|.*Start.*|.*Lancer.*|.*Begin.*"
+
+# Should see scoring screen
+- assertVisible:
+    text: ".*Mène.*|.*End.*|.*Score.*"
+    timeout: 5000
+
+# Score End 1: Team A scores 3 points
+- runFlow:
+    when:
+      visible:
+        id: "score-a-plus"
+    commands:
+      - tapOn:
+          id: "score-a-plus"
+      - tapOn:
+          id: "score-a-plus"
+      - tapOn:
+          id: "score-a-plus"
+
+# If scoring is done via number pad or direct input
+- runFlow:
+    when:
+      visible: ".*Valider mène.*|.*Validate end.*|.*Next.*|.*Suivant.*"
+    commands:
+      - tapOn:
+          text: ".*Valider.*|.*Validate.*|.*Next.*|.*Suivant.*"
+
+# Score End 2: Team B scores 2 points
+- runFlow:
+    when:
+      visible:
+        id: "score-b-plus"
+    commands:
+      - tapOn:
+          id: "score-b-plus"
+      - tapOn:
+          id: "score-b-plus"
+
+- runFlow:
+    when:
+      visible: ".*Valider mène.*|.*Validate end.*|.*Next.*|.*Suivant.*"
+    commands:
+      - tapOn:
+          text: ".*Valider.*|.*Validate.*|.*Next.*|.*Suivant.*"
+
+# ============================================
+# Phase 5: End Match
+# ============================================
+
+# Manually set final score or continue scoring until 13
+# For E2E purposes, we can "Finish early" if the option exists
+- scrollUntilVisible:
+    element:
+      text: ".*Terminer.*|.*Finish.*|.*End match.*|.*Fin.*"
+    direction: DOWN
+    timeout: 5000
+
+- tapOn:
+    text: ".*Terminer.*|.*Finish.*|.*End match.*|.*Fin.*"
+
+# Select winner if prompted
+- runFlow:
+    when:
+      visible: ".*Vainqueur.*|.*Winner.*"
+    commands:
+      - tapOn:
+          text: ".*Équipe A.*|.*Team A.*"
+          optional: true
+
+# ============================================
+# Phase 6: Save Match
+# ============================================
+
+# Tap "Save" or "Enregistrer"
+- tapOn:
+    text: ".*Enregistrer.*|.*Save.*|.*Sauvegarder.*"
+    optional: true
+
+# Wait for save confirmation (toast or redirect)
+- assertVisible:
+    text: ".*enregistré.*|.*saved.*|.*Accueil.*|.*Home.*|.*succès.*|.*success.*"
+    timeout: 10000
+
+# ============================================
+# Phase 7: Verify Match in History
+# ============================================
+
+# Navigate to home
+- tapOn:
+    text: ".*Accueil.*|.*Home.*"
+    optional: true
+
+# Navigate to history
+- scrollUntilVisible:
+    element:
+      text: ".*Historique.*|.*History.*|.*Voir tout.*|.*See all.*"
+    direction: DOWN
+    timeout: 8000
+
+- tapOn:
+    text: ".*Historique.*|.*History.*|.*Voir tout.*|.*See all.*"
+
+# Verify the match appears in history
+- assertVisible:
+    text: ".*Doublette.*|.*Entraînement.*|.*Training.*"
+    timeout: 5000
+
+# Go back to home
+- back

@@ -1,0 +1,46 @@
+# ============================================
+# Maestro E2E Configuration — Ultimate Petanque
+# ============================================
+# Maestro is a YAML-based UI testing framework for mobile apps.
+# It works with real devices and emulators without modifying app code.
+#
+# Prerequisites:
+#   - Install Maestro CLI: curl -Ls "https://get.maestro.mobile.dev" | bash
+#   - Build a debug APK: eas build --profile preview --platform android
+#   - Install the APK on emulator/device
+#
+# Run all flows:
+#   maestro test .maestro/
+#
+# Run a single flow:
+#   maestro test .maestro/flows/01-login-flow.yaml
+#
+# Run with video recording:
+#   maestro record .maestro/flows/01-login-flow.yaml
+#
+# CI integration (GitHub Actions):
+#   - uses: mobile-dev-inc/action-maestro-cloud@v1
+#     with:
+#       api-key: ${{ secrets.MAESTRO_CLOUD_API_KEY }}
+#       app-file: app-preview.apk
+#       workspace: .maestro/
+
+# Global configuration
+appId: com.ultimatepetanque.app
+name: Ultimate Petanque E2E Tests
+
+# Environment variables for test accounts
+env:
+  TEST_EMAIL: "e2e-test@ultimatepetanque.app"
+  TEST_PASSWORD: "Test123456"
+  TEST_OTP: "1234"
+  TEST_PLAYER_NAME: "E2E Test Player"
+  TEST_OPPONENT_NAME: "Opponent Bot"
+
+# Flow execution order
+flows:
+  - .maestro/flows/01-login-flow.yaml
+  - .maestro/flows/02-tab-navigation.yaml
+  - .maestro/flows/03-match-creation.yaml
+  - .maestro/flows/04-cross-player-sharing.yaml
+  - .maestro/flows/05-iap-flow.yaml

@@ -1,0 +1,141 @@
+{
+  "expo": {
+    "name": "Ultimate Petanque",
+    "slug": "ppss-petanque-scorer",
+    "version": "1.15.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/app-logo.png",
+    "scheme": "onspaceapp",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": false,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.ultimatepetanque.app",
+      "associatedDomains": [
+        "applinks:ultimatepetanque.app"
+      ],
+      "config": {
+        "googleMapsApiKey": "AIzaSyCN7isQnQhdYy7Rep2mDmwu931KZyGkMck"
+      },
+      "entitlements": {
+        "aps-environment": "production"
+      },
+      "infoPlist": {
+        "NSCameraUsageDescription": "Ultimate Petanque utilise la camera pour prendre des photos de profil, de boules et de terrains.",
+        "NSPhotoLibraryUsageDescription": "Ultimate Petanque accede a vos photos pour ajouter des images de profil, de boules et de terrains.",
+        "NSLocationWhenInUseUsageDescription": "Ultimate Petanque utilise votre position pour afficher les terrains et joueurs a proximite sur la carte.",
+        "NSUserTrackingUsageDescription": "Ultimate Petanque utilise cet identifiant pour vous proposer des publicites pertinentes et ameliorer votre experience.",
+        "UIBackgroundModes": [
+          "remote-notification"
+        ]
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/app-logo.png",
+        "backgroundColor": "#ffffff"
+      },
+      "config": {
+        "googleMaps": {
+          "apiKey": "AIzaSyAGXmO6mX-9GrCvg_z4ZxXK4siw_Q7lbFo"
+        }
+      },
+      "edgeToEdgeEnabled": false,
+      "package": "com.ultimatepetanque.app",
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "CAMERA",
+        "READ_MEDIA_IMAGES",
+        "POST_NOTIFICATIONS",
+        "VIBRATE",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ],
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "onspaceapp",
+              "host": "*",
+              "pathPrefix": "/auth"
+            },
+            {
+              "scheme": "ultimatepetanque",
+              "host": "*",
+              "pathPrefix": "/share"
+            },
+            {
+              "scheme": "ultimatepetanque",
+              "host": "*",
+              "pathPrefix": "/meetup"
+            },
+            {
+              "scheme": "https",
+              "host": "ultimatepetanque.app",
+              "pathPrefix": "/share"
+            },
+            {
+              "scheme": "https",
+              "host": "ultimatepetanque.app",
+              "pathPrefix": "/meetup"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        }
+      ]
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static",
+      "favicon": "./assets/images/logo-ultimate-petanque.png"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/logo-ultimate-petanque.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#ffffff"
+        }
+      ],
+      "expo-web-browser",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/app-logo.png",
+          "color": "#2563EB",
+          "sounds": [],
+          "mode": "production"
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Ultimate Petanque utilise la camera pour scanner les QR codes."
+        }
+      ],
+      "expo-secure-store"
+    ],
+    "react-native-google-mobile-ads": {
+      "android_app_id": "ca-app-pub-3940256099942544~3347511713",
+      "ios_app_id": "ca-app-pub-3940256099942544~1458002511",
+      "delay_app_measurement_init": true
+    },
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "80801df7-6ed9-4bb4-bc6b-a66f77a24796"
+      }
+    }
+  }
+}

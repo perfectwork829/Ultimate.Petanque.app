@@ -1,0 +1,192 @@
+# ============================================
+# Flow 05: In-App Purchase (Remove Ads)
+# ============================================
+# Tests: Navigate to remove-ads page, product display, purchase button,
+#         promo code input, premium state verification
+#
+# Prerequisites:
+#   - User is logged in
+#   - App is running in sandbox/test environment for IAP
+#
+# Note: Actual purchase will only work in sandbox testing (TestFlight/Play Console)
+# This flow tests the UI elements and navigation.
+
+appId: com.ultimatepetanque.app
+
+---
+
+# ============================================
+# Phase 1: Navigate to Remove Ads Page
+# ============================================
+
+- launchApp:
+    clearState: false
+
+- assertVisible:
+    text: ".*Accueil.*|.*Home.*"
+    timeout: 10000
+
+# Navigate to profile first
+- scrollUntilVisible:
+    element:
+      text: ".*Profil.*|.*Profile.*"
+    direction: DOWN
+    timeout: 8000
+
+- tapOn:
+    text: ".*Profil.*|.*Profile.*"
+    optional: true
+
+# Look for "Remove Ads" or "Supprimer les pubs" option
+- scrollUntilVisible:
+    element:
+      text: ".*Supprimer.*pub.*|.*Remove.*ad.*|.*Sans pub.*|.*Ad-free.*|.*Premium.*"
+    direction: DOWN
+    timeout: 8000
+
+- tapOn:
+    text: ".*Supprimer.*pub.*|.*Remove.*ad.*|.*Sans pub.*|.*Ad-free.*|.*Premium.*"
+
+# ============================================
+# Phase 2: Verify Product Display
+# ============================================
+
+# Should see the remove-ads page
+- assertVisible:
+    text: ".*pub.*|.*ad.*|.*Premium.*"
+    timeout: 5000
+
+# Price should be displayed (€5.99 or equivalent)
+- assertVisible:
+    text: ".*5[.,]99.*|.*€.*|.*\\$.*"
+    timeout: 3000
+    optional: true
+
+# Purchase button should be visible
+- assertVisible:
+    text: ".*Acheter.*|.*Purchase.*|.*Buy.*|.*Supprimer.*"
+    timeout: 3000
+
+# ============================================
+# Phase 3: Verify Promo Code Section
+# ============================================
+
+# Scroll to find promo code section
+- scrollUntilVisible:
+    element:
+      text: ".*Code promo.*|.*Promo code.*|.*Coupon.*"
+    direction: DOWN
+    timeout: 5000
+
+- assertVisible:
+    text: ".*Code promo.*|.*Promo code.*|.*Coupon.*"
+
+# Tap promo code input
+- tapOn:
+    id: "promo-code-input"
+    optional: true
+
+# Try an invalid promo code
+- inputText: "INVALID_CODE_123"
+
+# Submit promo code
+- tapOn:
+    text: ".*Valider.*|.*Apply.*|.*Validate.*|.*Appliquer.*"
+
+# Should show error for invalid code
+- assertVisible:
+    text: ".*invalide.*|.*invalid.*|.*erreur.*|.*error.*|.*expiré.*|.*expired.*"
+    timeout: 5000
+    optional: true
+
+# ============================================
+# Phase 4: Verify Restore Purchase Button
+# ============================================
+
+- scrollUntilVisible:
+    element:
+      text: ".*Restaurer.*|.*Restore.*"
+    direction: DOWN
+    timeout: 5000
+
+- assertVisible:
+    text: ".*Restaurer.*|.*Restore.*"
+
+# Tap restore (should handle gracefully if no purchases exist)
+- tapOn:
+    text: ".*Restaurer.*|.*Restore.*"
+
+# Wait for restore result (could be success, empty, or error)
+- assertVisible:
+    text: ".*"
+    timeout: 5000
+
+# ============================================
+# Phase 5: Attempt Purchase (Sandbox only)
+# ============================================
+
+# Scroll back to purchase button
+- scrollUntilVisible:
+    element:
+      text: ".*Acheter.*|.*Purchase.*|.*Buy.*|.*Supprimer.*"
+    direction: UP
+    timeout: 5000
+
+# In sandbox mode, tapping purchase will show the system dialog
+# We verify the button is tappable, but don't complete the purchase
+# (requires Play Store / App Store sandbox credentials)
+- tapOn:
+    text: ".*Acheter.*|.*Purchase.*|.*Buy.*|.*Supprimer.*"
+
+# System purchase dialog should appear (or error if not sandbox)
+# Wait a moment, then dismiss if possible
+- runFlow:
+    when:
+      visible: ".*Cancel.*|.*Annuler.*"
+    commands:
+      - tapOn:
+          text: ".*Cancel.*|.*Annuler.*"
+
+# ============================================
+# Phase 6: Verify Premium State (if applicable)
+# ============================================
+
+# Go back
+- back
+
+# Navigate to profile to check premium status
+- scrollUntilVisible:
+    element:
+      text: ".*Premium.*|.*premium.*|.*pub.*|.*ad.*"
+    direction: DOWN
+    timeout: 5000
+    optional: true
+
+# ============================================
+# Phase 7: Donation Section
+# ============================================
+
+# Navigate back to remove-ads page
+- scrollUntilVisible:
+    element:
+      text: ".*Supprimer.*pub.*|.*Remove.*ad.*|.*Sans pub.*|.*Premium.*"
+    direction: DOWN
+    timeout: 5000
+
+- tapOn:
+    text: ".*Supprimer.*pub.*|.*Remove.*ad.*|.*Sans pub.*|.*Premium.*"
+    optional: true
+
+# Check for donation/support section
+- scrollUntilVisible:
+    element:
+      text: ".*Soutenir.*|.*Support.*|.*Donation.*|.*Don.*"
+    direction: DOWN
+    timeout: 5000
+    optional: true
+
+# Go back to home
+- back
+- tapOn:
+    text: ".*Accueil.*|.*Home.*"
+    optional: true

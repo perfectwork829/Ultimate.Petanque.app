@@ -1,0 +1,115 @@
+diff --git a/node_modules/react-native-google-mobile-ads/android/src/main/java/io/invertase/googlemobileads/NativeAppModuleSpec.java b/node_modules/react-native-google-mobile-ads/android/src/main/java/io/invertase/googlemobileads/NativeAppModuleSpec.java
+new file mode 100644
+index 0000000..1814b9c
+--- /dev/null
++++ b/node_modules/react-native-google-mobile-ads/android/src/main/java/io/invertase/googlemobileads/NativeAppModuleSpec.java
+@@ -0,0 +1,55 @@
++package io.invertase.googlemobileads;
++
++import com.facebook.react.bridge.Promise;
++import com.facebook.react.bridge.ReactApplicationContext;
++import com.facebook.react.bridge.ReactContextBaseJavaModule;
++import com.facebook.react.bridge.ReadableMap;
++
++/**
++ * Compatibility shim for builds where RN codegen does not generate NativeAppModuleSpec.
++ * This keeps react-native-google-mobile-ads compiling in old-arch/release builds.
++ */
++public abstract class NativeAppModuleSpec extends ReactContextBaseJavaModule {
++  public static final String NAME = "RNAppModule";
++
++  protected NativeAppModuleSpec(ReactApplicationContext reactContext) {
++    super(reactContext);
++  }
++
++  @Override
++  public String getName() {
++    return NAME;
++  }
++
++  public abstract void initializeApp(ReadableMap options, ReadableMap appConfig, Promise promise);
++
++  public abstract void setAutomaticDataCollectionEnabled(String appName, boolean enabled);
++
++  public abstract void deleteApp(String appName, Promise promise);
++
++  public abstract void eventsNotifyReady(boolean ready);
++
++  public abstract void eventsGetListeners(Promise promise);
++
++  public abstract void eventsPing(String eventName, ReadableMap eventBody, Promise promise);
++
++  public abstract void eventsAddListener(String eventName);
++
++  public abstract void eventsRemoveListener(String eventName, boolean all);
++
++  public abstract void addListener(String eventName);
++
++  public abstract void removeListeners(double count);
++
++  public abstract void metaGetAll(Promise promise);
++
++  public abstract void jsonGetAll(Promise promise);
++
++  public abstract void preferencesSetBool(String key, boolean value, Promise promise);
++
++  public abstract void preferencesSetString(String key, String value, Promise promise);
++
++  public abstract void preferencesGetAll(Promise promise);
++
++  public abstract void preferencesClearAll(Promise promise);
++}
+diff --git a/node_modules/react-native-google-mobile-ads/src/specs/modules/NativeAppModule.ts b/node_modules/react-native-google-mobile-ads/src/specs/modules/NativeAppModule.ts
+index f315f05..4e4b30c 100644
+--- a/node_modules/react-native-google-mobile-ads/src/specs/modules/NativeAppModule.ts
++++ b/node_modules/react-native-google-mobile-ads/src/specs/modules/NativeAppModule.ts
+@@ -16,24 +16,23 @@
+ 
+ import type { TurboModule } from 'react-native';
+ import { TurboModuleRegistry } from 'react-native';
+-import type { CodegenTypes } from 'react-native';
+ 
+ export interface Spec extends TurboModule {
+   // App initialization
+   initializeApp(
+-    options: CodegenTypes.UnsafeObject,
+-    appConfig: CodegenTypes.UnsafeObject,
+-  ): Promise<CodegenTypes.UnsafeObject>;
++    options: Object,
++    appConfig: Object,
++  ): Promise<Object>;
+   setAutomaticDataCollectionEnabled(appName: string, enabled: boolean): void;
+   deleteApp(appName: string): Promise<void>;
+ 
+   // Events
+   eventsNotifyReady(ready: boolean): void;
+-  eventsGetListeners(): Promise<CodegenTypes.UnsafeObject>;
++  eventsGetListeners(): Promise<Object>;
+   eventsPing(
+     eventName: string,
+-    eventBody: CodegenTypes.UnsafeObject,
+-  ): Promise<CodegenTypes.UnsafeObject>;
++    eventBody: Object,
++  ): Promise<Object>;
+   eventsAddListener(eventName: string): void;
+   eventsRemoveListener(eventName: string, all: boolean): void;
+ 
+@@ -42,15 +41,15 @@ export interface Spec extends TurboModule {
+   removeListeners(count: number): void;
+ 
+   // Meta
+-  metaGetAll(): Promise<CodegenTypes.UnsafeObject>;
++  metaGetAll(): Promise<Object>;
+ 
+   // JSON
+-  jsonGetAll(): Promise<CodegenTypes.UnsafeObject>;
++  jsonGetAll(): Promise<Object>;
+ 
+   // Preferences
+   preferencesSetBool(key: string, value: boolean): Promise<void>;
+   preferencesSetString(key: string, value: string): Promise<void>;
+-  preferencesGetAll(): Promise<CodegenTypes.UnsafeObject>;
++  preferencesGetAll(): Promise<Object>;
+   preferencesClearAll(): Promise<void>;
+ }
+ 

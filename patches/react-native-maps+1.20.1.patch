@@ -1,0 +1,93 @@
+diff --git a/node_modules/react-native-maps/android/src/main/java/com/rnmaps/maps/MapMarker.java b/node_modules/react-native-maps/android/src/main/java/com/rnmaps/maps/MapMarker.java
+index b755f9b..e19d0cb 100644
+--- a/node_modules/react-native-maps/android/src/main/java/com/rnmaps/maps/MapMarker.java
++++ b/node_modules/react-native-maps/android/src/main/java/com/rnmaps/maps/MapMarker.java
+@@ -410,6 +410,22 @@ public class MapMarker extends MapFeature {
+     update(true);
+   }
+ 
++  @Override
++  protected void onLayout(boolean changed, int l, int t, int r, int b) {
++    super.onLayout(changed, l, t, r, b);
++
++    int newWidth = r - l;
++    int newHeight = b - t;
++    if (newWidth > 0 && newHeight > 0 && (newWidth != this.width || newHeight != this.height)) {
++      this.width = newWidth;
++      this.height = newHeight;
++      clearDrawableCache();
++      if (marker != null) {
++        update(true);
++      }
++    }
++  }
++
+   @Override
+   public void requestLayout() {
+     super.requestLayout();
+@@ -524,6 +540,22 @@ public class MapMarker extends MapFeature {
+   private Bitmap createDrawable() {
+     int width = this.width <= 0 ? 100 : this.width;
+     int height = this.height <= 0 ? 100 : this.height;
++
++    // Fabric/Yoga can report a smaller layout box than the laid-out marker subtree (clipped quarter-circle icons).
++    if (getChildCount() > 0) {
++      View child = getChildAt(0);
++      if (child != null) {
++        int cw = child.getWidth() > 0 ? child.getWidth() : child.getMeasuredWidth();
++        int ch = child.getHeight() > 0 ? child.getHeight() : child.getMeasuredHeight();
++        if (cw > 0) {
++          width = Math.max(width, cw);
++        }
++        if (ch > 0) {
++          height = Math.max(height, ch);
++        }
++      }
++    }
++
+     this.buildDrawingCache();
+ 
+     // Do not create the doublebuffer-bitmap each time. reuse it to save memory.
+diff --git a/node_modules/react-native-maps/android/src/main/java/com/rnmaps/maps/MapView.java b/node_modules/react-native-maps/android/src/main/java/com/rnmaps/maps/MapView.java
+index a193a47..14a3f45 100644
+--- a/node_modules/react-native-maps/android/src/main/java/com/rnmaps/maps/MapView.java
++++ b/node_modules/react-native-maps/android/src/main/java/com/rnmaps/maps/MapView.java
+@@ -169,10 +169,25 @@ public class MapView extends com.google.android.gms.maps.MapView implements Goog
+     return superContext;
+   }
+ 
++  /** SurfaceView must use media-overlay z-order so RN siblings (tab bar, buttons) receive touches. */
++  private static void setMapSurfaceMediaOverlay(ViewGroup root) {
++    for (int i = 0; i < root.getChildCount(); i++) {
++      View child = root.getChildAt(i);
++      if (child instanceof android.view.SurfaceView) {
++        ((android.view.SurfaceView) child).setZOrderMediaOverlay(true);
++        return;
++      }
++      if (child instanceof ViewGroup) {
++        setMapSurfaceMediaOverlay((ViewGroup) child);
++      }
++    }
++  }
++
+   public MapView(ThemedReactContext reactContext, ReactApplicationContext appContext,
+                  MapManager manager,
+                  GoogleMapOptions googleMapOptions) {
+     super(getNonBuggyContext(reactContext, appContext), googleMapOptions);
++    setMapSurfaceMediaOverlay(this);
+ 
+     this.manager = manager;
+     this.context = reactContext;
+@@ -234,6 +249,12 @@ public class MapView extends com.google.android.gms.maps.MapView implements Goog
+     addView(attacherGroup);
+   }
+ 
++  @Override
++  protected void onAttachedToWindow() {
++    setMapSurfaceMediaOverlay(this);
++    super.onAttachedToWindow();
++  }
++
+   @Override
+   public void onMapReady(@NonNull final GoogleMap map) {
+     if (destroyed) {
