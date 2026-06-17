@@ -7,7 +7,6 @@ import { View, Text, Pressable, StyleSheet, Modal, Platform } from 'react-native
 import { MaterialIcons } from '@expo/vector-icons';
 import Animated, {
   FadeIn,
-  FadeInUp,
   useSharedValue,
   useAnimatedStyle,
   withRepeat,
@@ -20,7 +19,6 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from '@/services/haptics';
 import { BADGES, getBadgeName, getBadgeDescription, getBadgeCategoryLabel } from '@/services/badgeService';
-import theme from '@/constants/theme';
 
 interface Props {
   visible: boolean;
@@ -113,8 +111,8 @@ export default function BadgeUnlockModal({ visible, badgeId, language, onClose }
           end={{ x: 0.5, y: 1 }}
           style={s.gradient}
         >
-          {/* Decorative particle ring — centered absolutely */}
-          <View style={s.particleContainer}>
+          {/* Decorative particle ring — behind content, non-interactive */}
+          <View style={s.particleContainer} pointerEvents="none">
             <Animated.View style={[s.particleRing, particleStyle]}>
               {[0, 45, 90, 135, 180, 225, 270, 315].map((deg, i) => (
                 <View
@@ -152,7 +150,7 @@ export default function BadgeUnlockModal({ visible, badgeId, language, onClose }
                 </Animated.View>
               </View>
 
-              {/* Badge icon — fixed-height slot below banner */}
+              {/* Badge icon — clipped slot; no Android elevation (prevents drawing over text below) */}
               <View style={s.iconArea}>
                 <Animated.View style={[s.glowRing, { borderColor: badge.color, shadowColor: badge.color }, glowStyle]} />
                 <Animated.View style={[s.iconContainer, { backgroundColor: badge.color + '15' }, pulseStyle]}>
@@ -164,33 +162,26 @@ export default function BadgeUnlockModal({ visible, badgeId, language, onClose }
                 </Animated.View>
               </View>
 
-              {/* Badge name */}
-              <View style={s.titleSlot}>
-                <Animated.View entering={FadeInUp.duration(500).delay(250)}>
+              {/* Text block below icon — own stacking layer, full-width centered */}
+              <View style={s.textBlock}>
+                <Animated.View entering={FadeIn.duration(450).delay(200)} style={s.animFullWidth}>
                   <Text style={[s.badgeName, { color: badge.color }]}>{getBadgeName(badgeId, language)}</Text>
                 </Animated.View>
-              </View>
 
-              {/* Category chip */}
-              <View style={s.centeredSlot}>
                 <Animated.View
-                  entering={FadeIn.duration(400).delay(350)}
-                  style={[s.catChip, { backgroundColor: badge.color + '15', borderColor: badge.color + '30' }]}
+                  entering={FadeIn.duration(400).delay(300)}
+                  style={s.animFullWidth}
                 >
-                  <Text style={[s.catChipText, { color: badge.color }]}>{catLabel}</Text>
+                  <View style={[s.catChip, { backgroundColor: badge.color + '15', borderColor: badge.color + '30' }]}>
+                    <Text style={[s.catChipText, { color: badge.color }]}>{catLabel}</Text>
+                  </View>
                 </Animated.View>
-              </View>
 
-              {/* Description */}
-              <View style={s.titleSlot}>
-                <Animated.View entering={FadeIn.duration(400).delay(400)}>
+                <Animated.View entering={FadeIn.duration(400).delay(380)} style={s.animFullWidth}>
                   <Text style={s.badgeDesc}>{getBadgeDescription(badgeId, language)}</Text>
                 </Animated.View>
-              </View>
 
-              {/* XP reward */}
-              <View style={s.centeredSlot}>
-                <Animated.View entering={FadeIn.duration(400).delay(500)}>
+                <Animated.View entering={FadeIn.duration(400).delay(460)} style={s.animFullWidth}>
                   <Animated.View style={[s.xpReward, { borderColor: badge.color + '30' }, shimmerStyle]}>
                     <MaterialIcons name="bolt" size={24} color="#FCD34D" />
                     <Text style={s.xpRewardText}>+{badge.xpReward} XP</Text>
@@ -235,7 +226,8 @@ const s = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingBottom: 100, // shift particles up slightly to align with icon
+    paddingBottom: 100,
+    zIndex: 0,
   },
   particleRing: {
     width: 260,
@@ -253,6 +245,7 @@ const s = StyleSheet.create({
     flexDirection: 'column',
     paddingHorizontal: 24,
     paddingTop: 48,
+    zIndex: 1,
   },
   flexBookend: {
     flex: 1,
@@ -278,20 +271,29 @@ const s = StyleSheet.create({
     flexShrink: 0,
     maxWidth: '100%',
   },
-  titleSlot: {
+  textBlock: {
     width: '100%',
     maxWidth: 320,
     alignItems: 'center',
+    zIndex: 2,
+    elevation: 0,
+  },
+  animFullWidth: {
+    width: '100%',
+    alignItems: 'center',
     marginBottom: 14,
   },
-  // Icon area — fixed box; pulse scale stays inside
+  // Icon area — fixed box; pulse scale clipped inside (no elevation bleed on Android)
   iconArea: {
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 20,
+    marginBottom: 24,
     width: 172,
     height: 172,
     flexShrink: 0,
+    overflow: 'hidden',
+    zIndex: 1,
+    elevation: 0,
   },
   glowRing: {
     position: 'absolute',
@@ -301,7 +303,7 @@ const s = StyleSheet.create({
     borderWidth: 2,
     ...Platform.select({
       ios: { shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.5, shadowRadius: 30 },
-      android: { elevation: 8 },
+      android: {},
     }),
   },
   iconContainer: {
@@ -327,14 +329,8 @@ const s = StyleSheet.create({
     justifyContent: 'center',
     ...Platform.select({
       ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.35, shadowRadius: 20 },
-      android: { elevation: 16 },
+      android: {},
     }),
-  },
-  /** Full-width row that centers shrink-wrapped children (pills/chips). */
-  centeredSlot: {
-    width: '100%',
-    alignItems: 'center',
-    marginBottom: 14,
   },
   unlockLabelGradient: {
     paddingHorizontal: 20,
@@ -367,6 +363,7 @@ const s = StyleSheet.create({
     paddingVertical: 5,
     borderRadius: 12,
     borderWidth: 1,
+    alignSelf: 'center',
   },
   catChipText: {
     fontSize: 12,
