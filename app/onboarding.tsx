@@ -296,6 +296,7 @@ export default function OnboardingScreen() {
             latitude: profileLocation.latitude,
             longitude: profileLocation.longitude,
           },
+          isPublic: true,
         });
       }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);

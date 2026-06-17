@@ -13,6 +13,7 @@ import {
   FlatList,
   ActivityIndicator,
   Linking,
+  Keyboard,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -451,29 +452,33 @@ export default function NewTournamentScreen() {
             ) : null}
           </SectionCard>
 
-          {/* 6. Club organisateur (Modal Picker) */}
-          <SectionCard title={t('tournament', 'organizingClub')} icon="home-work" color={theme.primaryLight} delay={225}>
-            <Pressable style={styles.pickerButton} onPress={() => { setClubSearch(''); setShowClubPicker(true); }}>
-              {selectedClubObj ? (
-                <View style={styles.pickerSelected}>
-                  <MaterialIcons name="home-work" size={20} color={theme.primaryLight} />
-                  <View style={styles.pickerSelectedInfo}>
-                    <Text style={styles.pickerSelectedName}>{selectedClubObj.name}</Text>
-                    <Text style={styles.pickerSelectedSub}>{selectedClubObj.city}</Text>
-                  </View>
-                  <Pressable onPress={(e) => { e.stopPropagation(); setClubId(undefined); Haptics.selectionAsync(); }} hitSlop={8}>
-                    <MaterialIcons name="close" size={18} color={theme.textMuted} />
-                  </Pressable>
-                </View>
-              ) : (
-                <View style={styles.pickerPlaceholder}>
-                  <MaterialIcons name="home-work" size={20} color={theme.textMuted} />
-                  <Text style={styles.pickerPlaceholderText}>{t('tournament', 'none')}</Text>
-                  <MaterialIcons name="chevron-right" size={20} color={theme.textMuted} />
-                </View>
-              )}
+          {/* 6. Club organisateur — single tappable row (avoids overlap with accordions below) */}
+          <AccordionCard>
+            <Pressable
+              style={styles.accordionHeader}
+              onPress={() => {
+                Haptics.selectionAsync();
+                Keyboard.dismiss();
+                setClubSearch('');
+                setShowClubPicker(true);
+              }}
+            >
+              <View style={[styles.sectionCardIcon, { backgroundColor: theme.primaryLight + '15' }]}>
+                <MaterialIcons name="home-work" size={18} color={theme.primaryLight} />
+              </View>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={styles.sectionCardTitle}>{t('tournament', 'organizingClub')}</Text>
+                {selectedClubObj ? (
+                  <Text style={[styles.accordionValueText, { color: theme.primaryLight }]} numberOfLines={1}>
+                    {selectedClubObj.name}{selectedClubObj.city ? ` · ${selectedClubObj.city}` : ''}
+                  </Text>
+                ) : (
+                  <Text style={styles.sectionCardSubtitle}>{t('tournament', 'none')}</Text>
+                )}
+              </View>
+              <MaterialIcons name="chevron-right" size={24} color={theme.textMuted} />
             </Pressable>
-          </SectionCard>
+          </AccordionCard>
 
           {/* 7. Finances - Accordion */}
           <AccordionCard>
@@ -763,7 +768,7 @@ export default function NewTournamentScreen() {
           <View style={{ flex: 1 }}>
           <Pressable style={[styles.modalPickerItem, !terrainId && styles.modalPickerItemActive]} onPress={() => { Haptics.selectionAsync(); setTerrainId(undefined); setShowTerrainPicker(false); }}>
             <View style={[styles.modalPickerItemIcon, { backgroundColor: theme.textMuted + '15' }]}><MaterialIcons name="edit-location" size={20} color={theme.textMuted} /></View>
-            <View style={{ flex: 1 }}><Text style={styles.modalPickerItemName}>{t('tournament', 'otherLocation')}</Text><Text style={styles.modalPickerItemSub}>{t('tournament', 'manualAddressEntry')}</Text></View>
+            <View style={styles.modalPickerItemInfo}><Text style={styles.modalPickerItemName}>{t('tournament', 'otherLocation')}</Text><Text style={styles.modalPickerItemSub}>{t('tournament', 'manualAddressEntry')}</Text></View>
             {!terrainId ? <MaterialIcons name="check-circle" size={20} color={theme.success} /> : null}
           </Pressable>
           <FlatList data={filteredTerrains} keyExtractor={(item) => item.id} style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 32 }} renderItem={({ item: tr }) => {
@@ -771,7 +776,7 @@ export default function NewTournamentScreen() {
             return (
               <Pressable style={[styles.modalPickerItem, { marginHorizontal: 0 }, terrainId === tr.id && styles.modalPickerItemActive]} onPress={() => { Haptics.selectionAsync(); setTerrainId(tr.id); setShowTerrainPicker(false); }}>
                 <View style={[styles.modalPickerItemIcon, { backgroundColor: theme.success + '15' }]}><MaterialIcons name={(tc?.icon as any) || 'landscape'} size={20} color={theme.success} /></View>
-                <View style={{ flex: 1 }}><Text style={styles.modalPickerItemName}>{tr.name}</Text><Text style={styles.modalPickerItemSub}>{tr.address}, {tr.city}</Text></View>
+                <View style={styles.modalPickerItemInfo}><Text style={styles.modalPickerItemName}>{tr.name}</Text><Text style={styles.modalPickerItemSub}>{tr.address}, {tr.city}</Text></View>
                 {terrainId === tr.id ? <MaterialIcons name="check-circle" size={20} color={theme.success} /> : null}
               </Pressable>
             );
@@ -828,18 +833,26 @@ export default function NewTournamentScreen() {
             <MaterialIcons name="search" size={20} color={theme.textMuted} />
             <TextInput style={styles.modalSearchInput} value={clubSearch} onChangeText={setClubSearch} placeholder={t('profile', 'searchClub')} placeholderTextColor={theme.textMuted} autoFocus />
           </View>
+          <View style={{ flex: 1 }}>
           <Pressable style={[styles.modalPickerItem, !clubId && styles.modalPickerItemActive]} onPress={() => { Haptics.selectionAsync(); setClubId(undefined); setShowClubPicker(false); }}>
             <View style={[styles.modalPickerItemIcon, { backgroundColor: theme.textMuted + '15' }]}><MaterialIcons name="block" size={20} color={theme.textMuted} /></View>
-            <Text style={styles.modalPickerItemName}>{t('tournament', 'none')}</Text>
+            <Text style={[styles.modalPickerItemName, { flex: 1 }]}>{t('tournament', 'none')}</Text>
             {!clubId ? <MaterialIcons name="check-circle" size={20} color={theme.primaryLight} /> : null}
           </Pressable>
-          <FlatList data={filteredClubs} keyExtractor={(item) => item.id} contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 32 }} renderItem={({ item: club }) => (
+          <FlatList
+            data={filteredClubs}
+            keyExtractor={(item) => item.id}
+            style={{ flex: 1 }}
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 32 }}
+            renderItem={({ item: club }) => (
             <Pressable style={[styles.modalPickerItem, { marginHorizontal: 0 }, clubId === club.id && styles.modalPickerItemActive]} onPress={() => { Haptics.selectionAsync(); setClubId(club.id); setShowClubPicker(false); }}>
               <View style={[styles.modalPickerItemIcon, { backgroundColor: theme.primaryLight + '15' }]}><MaterialIcons name="home-work" size={20} color={theme.primaryLight} /></View>
-              <View style={{ flex: 1 }}><Text style={styles.modalPickerItemName}>{club.name}</Text><Text style={styles.modalPickerItemSub}>{club.city}</Text></View>
+              <View style={styles.modalPickerItemInfo}><Text style={styles.modalPickerItemName}>{club.name}</Text><Text style={styles.modalPickerItemSub}>{club.city}</Text></View>
               {clubId === club.id ? <MaterialIcons name="check-circle" size={20} color={theme.primaryLight} /> : null}
             </Pressable>
           )} ListEmptyComponent={<View style={styles.modalEmpty}><MaterialIcons name="home-work" size={40} color={theme.textMuted} /><Text style={styles.modalEmptyText}>{t('profile', 'noClubRegistered')}</Text></View>} />
+          </View>
         </SafeAreaView>
       </Modal>
 
@@ -980,9 +993,10 @@ const styles = StyleSheet.create({
   modalCloseBtn: { padding: 8 },
   modalSearchContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: theme.surface, marginHorizontal: 16, marginVertical: 12, paddingHorizontal: 14, paddingVertical: 10, borderRadius: theme.borderRadius.md, gap: 10, borderWidth: 1, borderColor: theme.border },
   modalSearchInput: { flex: 1, fontSize: 15, color: theme.textPrimary, padding: 0 },
-  modalPickerItem: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14, paddingHorizontal: 16, backgroundColor: theme.surface, borderRadius: theme.borderRadius.md, marginHorizontal: 16, marginBottom: 8, ...theme.shadows.card },
+  modalPickerItem: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, paddingVertical: 14, paddingHorizontal: 16, backgroundColor: theme.surface, borderRadius: theme.borderRadius.md, marginHorizontal: 16, marginBottom: 8, ...theme.shadows.card },
   modalPickerItemActive: { borderWidth: 2, borderColor: theme.success },
-  modalPickerItemIcon: { width: 40, height: 40, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  modalPickerItemIcon: { width: 40, height: 40, borderRadius: 10, alignItems: 'center', justifyContent: 'center', marginTop: 2 },
+  modalPickerItemInfo: { flex: 1, minWidth: 0 },
   modalPickerItemName: { fontSize: 15, fontWeight: '600', color: theme.textPrimary },
   modalPickerItemSub: { fontSize: 12, color: theme.textMuted, marginTop: 2 },
   modalEmpty: { alignItems: 'center', paddingVertical: 40 },

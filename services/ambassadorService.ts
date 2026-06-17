@@ -76,9 +76,9 @@ export async function isUserSponsor(userId: string): Promise<boolean> {
   }
 }
 
-export async function fetchAmbassadors(): Promise<{ ambassadors: Ambassador[]; error: string | null }> {
+export async function fetchAmbassadors(options?: { forceRefresh?: boolean }): Promise<{ ambassadors: Ambassador[]; error: string | null }> {
   const now = Date.now();
-  if (cachedAmbassadors && now - lastFetchTime < CACHE_TTL) {
+  if (!options?.forceRefresh && cachedAmbassadors && now - lastFetchTime < CACHE_TTL) {
     return { ambassadors: cachedAmbassadors, error: null };
   }
 

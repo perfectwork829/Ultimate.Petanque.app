@@ -2,7 +2,7 @@
 // AdBanner - Web: Gold sponsor replacement or null
 // ============================================
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { View, Text, Pressable, StyleSheet, AppState } from 'react-native';
+import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Image } from 'expo-image';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -43,13 +43,7 @@ const AdBanner = React.memo((_props: AdBannerProps) => {
     const unsubscribe = subscribeGoldSponsorAdRefresh(() => {
       refreshGoldSponsor();
     });
-    const appStateSub = AppState.addEventListener('change', state => {
-      if (state === 'active') refreshGoldSponsor();
-    });
-    return () => {
-      unsubscribe();
-      appStateSub.remove();
-    };
+    return () => unsubscribe();
   }, [refreshGoldSponsor]);
 
   useFocusEffect(useCallback(() => {

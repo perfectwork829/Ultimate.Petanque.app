@@ -164,6 +164,61 @@ export async function toggleItemPublic(
   return { error: error?.message || null };
 }
 
+/** Turn on community directory visibility for a new user's primary player profile. */
+export async function enableSelfPlayerPublicProfile(
+  userId: string,
+): Promise<{ playerId: string | null; error: string | null }> {
+  const supabase = getSupabaseClient();
+  const now = new Date().toISOString();
+
+  const { data: canonical } = await supabase
+    .from('players')
+    .select('id, is_public')
+    .eq('id', userId)
+    .maybeSingle();
+
+  let playerId: string | null = null;
+
+  if (canonical) {
+    playerId = canonical.id;
+    if (!canonical.is_public) {
+      const { error } = await supabase
+        .from('players')
+        .update({ is_public: true, updated_at: now })
+        .eq('id', playerId);
+      if (error) return { playerId: null, error: error.message };
+    }
+  } else {
+    const { data: linked } = await supabase
+      .from('players')
+      .select('id, is_public')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle();
+
+    if (!linked) {
+      return { playerId: null, error: null };
+    }
+
+    playerId = linked.id;
+    if (!linked.is_public) {
+      const { error } = await supabase
+        .from('players')
+        .update({ is_public: true, updated_at: now })
+        .eq('id', playerId);
+      if (error) return { playerId: null, error: error.message };
+    }
+  }
+
+  await supabase
+    .from('user_profiles')
+    .update({ is_public_profile: true })
+    .eq('id', userId);
+
+  return { playerId, error: null };
+}
+
 export async function importPublicItemToDirectory(
   table: 'players' | 'clubs' | 'terrains' | 'tournaments',
   itemId: string,

@@ -6,7 +6,7 @@ import { Redirect, router } from 'expo-router';
 import * as Linking from 'expo-linking';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import theme from '@/constants/theme';
-import { checkPostOAuthDeviceBinding, recordAccountCreation, shouldShowDeviceBindingNotification, markDeviceBindingNotificationShown } from '@/services/deviceFingerprintService';
+import { checkPostOAuthDeviceBinding, recordAccountCreation } from '@/services/deviceFingerprintService';
 import { useLanguage } from '@/hooks/useLanguage';
 import { hasRequiredPlayerCity } from '@/utils/playerLocationRequirement';
 
@@ -135,12 +135,6 @@ function ProfileChecker() {
           }
           // Record device binding for OAuth users (first-time)
           recordAccountCreation(user.email, 'google').catch(() => {});
-          // Show one-time device binding notification
-          const shouldShow = await shouldShowDeviceBindingNotification();
-          if (shouldShow) {
-            markDeviceBindingNotificationShown();
-            showAlert(t('login', 'deviceBindingTitle'), t('login', 'deviceBindingMessage'));
-          }
         } catch { /* silent — don't block login on error */ }
       }
 

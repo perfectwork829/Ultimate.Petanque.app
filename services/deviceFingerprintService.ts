@@ -292,27 +292,6 @@ export async function checkPostOAuthDeviceBinding(email: string): Promise<{ allo
   return canLoginOnDevice(email);
 }
 
-/**
- * Show device binding notification once (stores flag in AsyncStorage).
- * Returns true if this is the first time and notification should be shown.
- */
-const DEVICE_BINDING_SHOWN_KEY = '@device_binding_notification_shown';
-
-export async function shouldShowDeviceBindingNotification(): Promise<boolean> {
-  try {
-    const shown = await AsyncStorage.getItem(DEVICE_BINDING_SHOWN_KEY);
-    return shown !== 'true';
-  } catch {
-    return false;
-  }
-}
-
-export async function markDeviceBindingNotificationShown(): Promise<void> {
-  try {
-    await AsyncStorage.setItem(DEVICE_BINDING_SHOWN_KEY, 'true');
-  } catch { /* silent */ }
-}
-
 // ============================================
 // HELPERS
 // ============================================

@@ -30,7 +30,7 @@ import {
 } from '@/constants/authOtp';
 import { useLanguage } from '@/hooks/useLanguage';
 import { isDisposableEmail } from '@/services/emailValidationService';
-import { canCreateAccount, canLoginOnDevice, recordAccountCreation, shouldShowDeviceBindingNotification, markDeviceBindingNotificationShown } from '@/services/deviceFingerprintService';
+import { canCreateAccount, canLoginOnDevice, recordAccountCreation } from '@/services/deviceFingerprintService';
 import { clearTempDataExpiry } from '@/services/retentionNotificationService';
 import { trackReferral } from '@/services/ambassadorService';
 import { mapAuthLoginErrorMessage } from '@/utils/mapAuthLoginError';
@@ -131,11 +131,6 @@ export default function LoginScreen() {
       return;
     }
 
-    const shouldShow = await shouldShowDeviceBindingNotification();
-    if (shouldShow) {
-      markDeviceBindingNotificationShown();
-      showAlert(t('login', 'deviceBindingTitle'), t('login', 'deviceBindingMessage'));
-    }
     router.replace('/');
   };
 
@@ -251,13 +246,6 @@ export default function LoginScreen() {
       recordAccountCreation(email.trim(), 'email').catch(() => {});
       // Clear 7-day temp data expiry since user is now registered
       clearTempDataExpiry().catch(() => {});
-      // Show one-time device binding notification
-      shouldShowDeviceBindingNotification().then(shouldShow => {
-        if (shouldShow) {
-          markDeviceBindingNotificationShown();
-          showAlert(t('login', 'deviceBindingTitle'), t('login', 'deviceBindingMessage'));
-        }
-      }).catch(() => {});
       // Track referral if code was provided
       if (referralCode.trim() && newUser?.id) {
         trackReferral(referralCode.trim(), newUser.id).then(({ success }) => {

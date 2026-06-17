@@ -3,7 +3,7 @@
 // Gold sponsors replace ads with branded content
 // ============================================
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { View, Text, Pressable, StyleSheet, Platform, AppState } from 'react-native';
+import { View, Text, Pressable, StyleSheet, Platform } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Image } from 'expo-image';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -145,8 +145,10 @@ const AdBanner = React.memo(({ position = 'inline', bottomOffset = 0 }: AdBanner
     try {
       const gold = await getActiveGoldSponsorForAdReplacement();
       setGoldSponsor(gold);
+      if (!gold) setIsAvailable(true);
     } catch {
       setGoldSponsor(null);
+      setIsAvailable(true);
     } finally {
       setGoldLoaded(true);
     }
@@ -162,12 +164,8 @@ const AdBanner = React.memo(({ position = 'inline', bottomOffset = 0 }: AdBanner
     const unsubscribe = subscribeGoldSponsorAdRefresh(() => {
       refreshGoldSponsor();
     });
-    const appStateSub = AppState.addEventListener('change', state => {
-      if (state === 'active') refreshGoldSponsor();
-    });
     return () => {
       unsubscribe();
-      appStateSub.remove();
     };
   }, [refreshGoldSponsor]);
 

@@ -520,11 +520,11 @@ export default function EditPlayerScreen() {
           <SectionCard title={t('player', 'boulesLabel')} icon="sports-baseball" color="#D97706" delay={430}>
             <TextInput style={styles.textInput} value={boulesName} onChangeText={setBoulesName} placeholder={t('player', 'boulesPlaceholder')} placeholderTextColor={theme.textMuted} />
             <View style={styles.specsRow}>
-              <View style={{ flex: 1 }}>
+              <View style={styles.modalPickerItemInfo}>
                 <Text style={styles.specLabel}>{t('player', 'diameterLabel')}</Text>
                 <TextInput style={styles.textInput} value={boulesDiameter} onChangeText={setBoulesDiameter} placeholder="Ex: 74" placeholderTextColor={theme.textMuted} keyboardType="number-pad" />
               </View>
-              <View style={{ flex: 1 }}>
+              <View style={styles.modalPickerItemInfo}>
                 <Text style={styles.specLabel}>{t('player', 'weightLabel')}</Text>
                 <TextInput style={styles.textInput} value={boulesWeight} onChangeText={setBoulesWeight} placeholder="Ex: 700" placeholderTextColor={theme.textMuted} keyboardType="number-pad" />
               </View>
@@ -674,7 +674,7 @@ export default function EditPlayerScreen() {
           <FlatList data={filteredClubs} keyExtractor={(item) => item.id} contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 32 }} renderItem={({ item: club }) => (
             <Pressable style={[styles.modalPickerItem, { marginHorizontal: 0 }, clubId === club.id && styles.modalPickerItemActive]} onPress={() => { Haptics.selectionAsync(); setClubId(club.id); setShowClubPicker(false); }}>
               <View style={[styles.modalPickerItemIcon, { backgroundColor: theme.accent + '15' }]}><MaterialIcons name="home-work" size={20} color={theme.accent} /></View>
-              <View style={{ flex: 1 }}><Text style={styles.modalPickerItemName}>{club.name}</Text><Text style={styles.modalPickerItemSub}>{club.city}</Text></View>
+              <View style={styles.modalPickerItemInfo}><Text style={styles.modalPickerItemName}>{club.name}</Text><Text style={styles.modalPickerItemSub}>{club.city}</Text></View>
               {clubId === club.id ? <MaterialIcons name="check-circle" size={20} color={theme.accent} /> : null}
             </Pressable>
           )} ListEmptyComponent={<View style={styles.modalEmpty}><MaterialIcons name="home-work" size={40} color={theme.textMuted} /><Text style={styles.modalEmptyText}>{t('profile', 'noClubRegistered')}</Text></View>} />
@@ -730,7 +730,7 @@ export default function EditPlayerScreen() {
           <FlatList data={filteredTerrains} keyExtractor={(item) => item.id} contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 32 }} renderItem={({ item: terrain }) => (
             <Pressable style={[styles.modalPickerItem, { marginHorizontal: 0 }, terrainId === terrain.id && styles.modalPickerItemActive]} onPress={() => { Haptics.selectionAsync(); setTerrainId(terrain.id); setTerrainName(terrain.name); setShowTerrainPicker(false); }}>
               <View style={[styles.modalPickerItemIcon, { backgroundColor: theme.success + '15' }]}><MaterialIcons name="sports-soccer" size={20} color={theme.success} /></View>
-              <View style={{ flex: 1 }}><Text style={styles.modalPickerItemName}>{terrain.name}</Text><Text style={styles.modalPickerItemSub}>{terrain.city} {'•'} {t('terrainTypes', terrain.type)}</Text></View>
+              <View style={styles.modalPickerItemInfo}><Text style={styles.modalPickerItemName}>{terrain.name}</Text><Text style={styles.modalPickerItemSub}>{terrain.city} {'•'} {t('terrainTypes', terrain.type)}</Text></View>
               {terrainId === terrain.id ? <MaterialIcons name="check-circle" size={20} color={theme.success} /> : null}
             </Pressable>
           )} ListEmptyComponent={<View style={styles.modalEmpty}><MaterialIcons name="place" size={40} color={theme.textMuted} /><Text style={styles.modalEmptyText}>{t('profile', 'noTerrainRegistered')}</Text></View>} />
@@ -828,10 +828,11 @@ const styles = StyleSheet.create({
   modalItemActive: { borderWidth: 2, borderColor: theme.success },
   modalItemIcon: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   modalItemText: { flex: 1, fontSize: 16, fontWeight: '600', color: theme.textPrimary },
-  modalPickerItem: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14, paddingHorizontal: 16, backgroundColor: theme.surface, borderRadius: theme.borderRadius.md, marginHorizontal: 16, marginBottom: 8, ...theme.shadows.card },
+  modalPickerItem: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, paddingVertical: 14, paddingHorizontal: 16, backgroundColor: theme.surface, borderRadius: theme.borderRadius.md, marginHorizontal: 16, marginBottom: 8, ...theme.shadows.card },
   modalPickerItemActive: { borderWidth: 2, borderColor: theme.primary },
-  modalPickerItemIcon: { width: 40, height: 40, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  modalPickerItemName: { flex: 1, fontSize: 15, fontWeight: '600', color: theme.textPrimary },
+  modalPickerItemIcon: { width: 40, height: 40, borderRadius: 10, alignItems: 'center', justifyContent: 'center', marginTop: 2 },
+  modalPickerItemInfo: { flex: 1, minWidth: 0 },
+  modalPickerItemName: { fontSize: 15, fontWeight: '600', color: theme.textPrimary },
   modalPickerItemSub: { fontSize: 12, color: theme.textMuted, marginTop: 2 },
   modalEmpty: { alignItems: 'center', paddingVertical: 40 },
   modalEmptyText: { fontSize: 14, color: theme.textMuted, marginTop: 10 },

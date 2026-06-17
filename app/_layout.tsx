@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, ScrollView, StyleSheet as RNStyleSheet, Platform, Pressable } from 'react-native';
 import { initializeAds } from '@/services/adService';
+import { bindGoldSponsorSyncOnAppResume } from '@/services/goldSponsorAdReplacement';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -120,6 +121,11 @@ function LayoutInner() {
   // Initialize Sentry crash reporting
   React.useEffect(() => {
     try { initSentry(); } catch (e) { console.log('[Sentry] Init error:', e); }
+  }, []);
+
+  // Re-sync gold sponsor ↔ AdMob state when app returns to foreground
+  React.useEffect(() => {
+    bindGoldSponsorSyncOnAppResume();
   }, []);
 
   // Google Mobile Ads — delay until after first frame (requires DELAY_APP_MEASUREMENT_INIT in manifest)
