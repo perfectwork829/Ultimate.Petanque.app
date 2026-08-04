@@ -24,6 +24,33 @@ function tournamentInsertErrorMessage(err: unknown): string {
   return String(err ?? 'Unknown error');
 }
 
+
+function cleanTournamentDbValue(value: any): any {
+  if (value === undefined) return undefined;
+  if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+  if (Array.isArray(value)) {
+    return value.map(cleanTournamentDbValue).filter(v => v !== undefined);
+  }
+  if (value && typeof value === 'object') {
+    const out: Record<string, any> = {};
+    Object.entries(value).forEach(([key, val]) => {
+      const cleaned = cleanTournamentDbValue(val);
+      if (cleaned !== undefined) out[key] = cleaned;
+    });
+    return out;
+  }
+  return value;
+}
+
+function cleanTournamentDbRow(row: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  Object.entries(row).forEach(([key, value]) => {
+    const cleaned = cleanTournamentDbValue(value);
+    if (cleaned !== undefined) out[key] = cleaned;
+  });
+  return out;
+}
+
 export async function addTournamentOp(
   tournament: Omit<Tournament, 'id'>,
   deps: TournamentCrudDeps
@@ -76,7 +103,7 @@ export async function addTournamentOp(
       row.poster_url = tournament.posterUrl;
     }
 
-    const { data, error } = await supabase.from('tournaments').insert(row).select().single();
+    const { data, error } = await supabase.from('tournaments').insert(cleanTournamentDbRow(row)).select().single();
 
     if (error) throw error;
 

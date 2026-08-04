@@ -69,39 +69,59 @@ import { tournamentEnumsTranslations } from './tournamentEnums';
 import { trustAndReportsTranslations } from './trustAndReports';
 import { gameAndUITranslations } from './gameAndUI';
 
-// Merge: topic files take precedence over original via spread order
-export const translations = {
-  ...originalTranslations,
-  // Wave 1 — Core pages
-  ...commonTranslations,
-  ...homeTranslations,
-  ...profileTranslations,
-  ...statsTranslations,
-  ...directoryTranslations,
-  ...matchTranslations,
-  ...challengeTranslations,
-  ...historyTranslations,
-  ...tournamentTranslations,
-  // Wave 2 — Entity pages
-  ...playerTranslations,
-  ...clubTranslations,
-  ...terrainTranslations,
-  ...equipmentTranslations,
-  ...palmaresTranslations,
-  ...financialTranslations,
-  ...mapTranslations,
-  ...shareTranslations,
-  ...meetupTranslations,
-  ...leaderboardTranslations,
-  // Wave 3 — Remaining sections
-  ...notificationsTranslations,
-  ...passwordTranslations,
-  ...syncTranslations,
-  ...legalTranslations,
-  ...tournamentEnumsTranslations,
-  ...trustAndReportsTranslations,
-  ...gameAndUITranslations,
-} as const;
+function isPlainObject(value: unknown): value is Record<string, any> {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function deepMergeTranslations<T extends Record<string, any>>(...sources: T[]): T {
+  const output: Record<string, any> = {};
+
+  sources.forEach((source) => {
+    Object.entries(source || {}).forEach(([key, value]) => {
+      if (isPlainObject(value) && isPlainObject(output[key])) {
+        output[key] = deepMergeTranslations(output[key], value);
+      } else if (isPlainObject(value)) {
+        output[key] = deepMergeTranslations(value);
+      } else {
+        output[key] = value;
+      }
+    });
+  });
+
+  return output as T;
+}
+
+// Merge deeply because many topic files share the same namespace
+// such as login, consent, terms, privacy, map, etc.
+export const translations = deepMergeTranslations(
+  originalTranslations,
+  commonTranslations,
+  homeTranslations,
+  profileTranslations,
+  statsTranslations,
+  directoryTranslations,
+  matchTranslations,
+  challengeTranslations,
+  historyTranslations,
+  tournamentTranslations,
+  playerTranslations,
+  clubTranslations,
+  terrainTranslations,
+  equipmentTranslations,
+  palmaresTranslations,
+  financialTranslations,
+  mapTranslations,
+  shareTranslations,
+  meetupTranslations,
+  leaderboardTranslations,
+  notificationsTranslations,
+  passwordTranslations,
+  syncTranslations,
+  legalTranslations,
+  tournamentEnumsTranslations,
+  trustAndReportsTranslations,
+  gameAndUITranslations,
+) as typeof originalTranslations;
 
 // Translation helper function
 export function t(section: string, key: string, language: 'fr' | 'en'): string {

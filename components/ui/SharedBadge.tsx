@@ -28,11 +28,14 @@ export default function SharedBadge({ permission, size = 'medium' }: SharedBadge
         size={isSmall ? 10 : 12}
         color={color}
       />
-      <Text style={[
-        styles.badgeText,
-        { color },
-        isSmall && styles.badgeTextSmall,
-      ]}>
+      <Text
+        numberOfLines={1}
+        style={[
+          styles.badgeText,
+          { color },
+          isSmall && styles.badgeTextSmall,
+        ]}
+      >
         {isWrite ? t('sharedBadge', 'write') : t('sharedBadge', 'readOnly')}
       </Text>
     </View>
@@ -64,6 +67,8 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: 20,
     borderWidth: 1,
+    maxWidth: '100%',
+    overflow: 'hidden',
   },
   badgeSmall: {
     paddingHorizontal: 6,
@@ -73,6 +78,7 @@ const styles = StyleSheet.create({
   badgeText: {
     fontSize: 11,
     fontWeight: '600',
+    flexShrink: 1,
   },
   badgeTextSmall: {
     fontSize: 9,

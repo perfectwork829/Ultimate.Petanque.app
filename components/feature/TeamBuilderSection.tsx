@@ -95,6 +95,7 @@ export default function TeamBuilderSection({ tournaments, terrains, language, se
   const [tournamentDistanceFilter, setTournamentDistanceFilter] = useState<DistanceFilter>('all');
   const { location: listUserLocation, loading: listGpsLoading, denied: listGpsDenied, requestLocation: requestListGPS } = useHomeDistanceFilterLocation();
   const [tournamentCoordsMap, setTournamentCoordsMap] = useState<Map<string, { lat: number; lng: number }>>(new Map());
+  const [tournamentCoordsLoading, setTournamentCoordsLoading] = useState(false);
 
   // Partner match history stats
   type PartnerStats = { wins: number; losses: number; total: number; winRate: number; lastDate: string | null };
@@ -201,21 +202,32 @@ export default function TeamBuilderSection({ tournaments, terrains, language, se
   useEffect(() => {
     if (tournamentDistanceFilter === 'all' || allTeamableTournaments.length === 0) {
       setTournamentCoordsMap(new Map());
+      setTournamentCoordsLoading(false);
       return;
     }
     let cancelled = false;
-    buildCoordsMap(allTeamableTournaments, t => resolveTournamentCoords(t, terrains)).then(map => {
-      if (!cancelled) setTournamentCoordsMap(map);
-    });
+    setTournamentCoordsLoading(true);
+    buildCoordsMap(allTeamableTournaments, t => resolveTournamentCoords(t, terrains))
+      .then(map => {
+        if (!cancelled) setTournamentCoordsMap(map);
+      })
+      .finally(() => {
+        if (!cancelled) setTournamentCoordsLoading(false);
+      });
     return () => { cancelled = true; };
   }, [tournamentDistanceFilter, allTeamableTournaments, terrains]);
 
   const teamableTournaments = useMemo((): TeamableTournament[] => {
     if (tournamentDistanceFilter === 'all') return allTeamableTournaments;
-    if (!listUserLocation) return [];
+
+    // Logic-only fix: keep the original Team Up list visible while GPS or
+    // tournament coordinates are still loading. Do not replace the whole section
+    // with "Getting your location..." just because the user selected 5 km / 10 km.
+    if (!listUserLocation || tournamentCoordsLoading) return allTeamableTournaments;
+
     const maxKm = Number(tournamentDistanceFilter);
     return filterItemsByDistance(allTeamableTournaments, tournamentCoordsMap, listUserLocation, maxKm);
-  }, [allTeamableTournaments, tournamentDistanceFilter, listUserLocation, tournamentCoordsMap]);
+  }, [allTeamableTournaments, tournamentDistanceFilter, listUserLocation, tournamentCoordsMap, tournamentCoordsLoading]);
 
   const distanceLabels: Record<DistanceFilter, string> = {
     all: t('directory', 'distanceAll'),
@@ -717,7 +729,6 @@ export default function TeamBuilderSection({ tournaments, terrains, language, se
                   onPress={() => {
                     Haptics.selectionAsync();
                     setTournamentDistanceFilter(option);
-                    if (option !== 'all') requestListGPS();
                   }}
                 >
                   <Text style={[s.listFilterChipText, active && s.listFilterChipTextActive]}>{distanceLabels[option]}</Text>
@@ -730,14 +741,7 @@ export default function TeamBuilderSection({ tournaments, terrains, language, se
           ) : null}
         </View>
 
-        {listGpsLoading && tournamentDistanceFilter !== 'all' && !listUserLocation ? (
-          <View style={s.listFilterEmpty}>
-            <ActivityIndicator size="small" color="#22C55E" />
-            <Text style={s.listFilterEmptyText}>
-              {fr ? 'Localisation en cours...' : 'Getting your location...'}
-            </Text>
-          </View>
-        ) : teamableTournaments.length === 0 ? (
+        {teamableTournaments.length === 0 ? (
           <View style={s.listFilterEmpty}>
             <MaterialIcons name="filter-alt-off" size={22} color="#94A3B8" />
             <Text style={s.listFilterEmptyText}>

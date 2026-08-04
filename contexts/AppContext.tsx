@@ -797,7 +797,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (tournamentsRes.data) {
         const dbTournaments = tournamentsRes.data.map(mapTournamentFromDb);
         console.log("db tournaments")
-        console.log(dbTournaments);
+        // console.log(dbTournaments);
         setTournaments(dbTournaments);
       
         // Auto-update tournament statuses based on dates

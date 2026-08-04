@@ -54,6 +54,7 @@ import { getMyActiveMeetups, inviteSingleUserToMeetup, Meetup } from '@/services
 
 type DirectoryTab = 'players' | 'clubs' | 'terrains' | 'tournaments' | 'events';
 type TournamentStatus = 'all' | 'À venir' | 'En cours' | 'Terminé';
+const DIRECTORY_TOURNAMENT_YELLOW = '#EAB308';
 type SortField = 'elo' | 'name' | 'win_rate' | 'members' | 'activity' | 'courts' | 'participants' | 'date' | 'city' | 'club' | 'country';
 type SortDirection = 'asc' | 'desc';
 type SortCriterion = { field: SortField; direction: SortDirection };
@@ -256,7 +257,7 @@ export default function DirectoryScreen() {
     { id: 'players', label: t('directory', 'players'), icon: 'person', color: theme.primary },
     { id: 'clubs', label: t('directory', 'clubs'), icon: 'home', color: theme.accent },
     { id: 'terrains', label: t('directory', 'terrains'), icon: 'sports-soccer', color: theme.success },
-    { id: 'tournaments', label: t('directory', 'tournaments'), icon: 'emoji-events', color: theme.carreauColor },
+    { id: 'tournaments', label: t('directory', 'tournaments'), icon: 'emoji-events', color: DIRECTORY_TOURNAMENT_YELLOW },
     { id: 'events', label: language === 'fr' ? 'Defis' : 'Challenges', icon: 'campaign', color: '#7C3AED' },
   ], [language]);
 
@@ -266,7 +267,7 @@ export default function DirectoryScreen() {
       players: ['#0F172A', '#1E3A8A', '#2563EB'],
       clubs: ['#451A03', '#92400E', '#D97706'],
       terrains: ['#022C22', '#064E3B', '#10B981'],
-      tournaments: ['#451A03', '#78350F', '#B45309'],
+      tournaments: ['#422006', '#A16207', DIRECTORY_TOURNAMENT_YELLOW],
       events: ['#4C1D95', '#6D28D9', '#7C3AED'],
     };
     return gradients[activeTab];
@@ -277,7 +278,7 @@ export default function DirectoryScreen() {
       players: theme.primary,
       clubs: theme.accent,
       terrains: theme.success,
-      tournaments: theme.carreauColor,
+      tournaments: DIRECTORY_TOURNAMENT_YELLOW,
       events: '#7C3AED',
     };
     return colors[activeTab];
@@ -924,14 +925,25 @@ export default function DirectoryScreen() {
 
   // Filtered events for events tab
   const filteredEvents = useMemo(() => {
+    const getEffectiveEventStatus = (e: SponsoredEvent) => {
+      if (e.status === 'completed' || e.status === 'cancelled') return e.status;
+      const end = new Date(e.endTime || e.eventDate);
+      const start = new Date(e.startTime || e.eventDate);
+      const now = new Date();
+      if (!Number.isNaN(end.getTime()) && now.getTime() > end.getTime()) return 'completed';
+      if (e.status === 'upcoming' && !Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime()) && now >= start && now <= end) return 'active';
+      return e.status;
+    };
+
     const filtered = sponsoredEvents.filter(e => {
+      const effectiveStatus = getEffectiveEventStatus(e);
       const q = searchQuery.toLowerCase();
       const matchesSearch = !searchQuery || e.title.toLowerCase().includes(q) || (e.ambassadorName || '').toLowerCase().includes(q) || (e.city || '').toLowerCase().includes(q);
-      const matchesStatus = filters.eventStatus === 'all' || e.status === filters.eventStatus;
+      const matchesStatus = filters.eventStatus === 'all' || effectiveStatus === filters.eventStatus;
       const matchesType = filters.eventType === 'all' || e.challengeType === filters.eventType;
       const matchesAmbassador = filters.eventAmbassador === 'all' || e.ambassadorId === filters.eventAmbassador;
       return matchesSearch && matchesStatus && matchesType && matchesAmbassador;
-    });
+    }).map(e => ({ ...e, status: getEffectiveEventStatus(e) as any }));
     if (sortCriteria.length > 0) return applyMultiSort(filtered);
     return filtered;
   }, [sponsoredEvents, searchQuery, filters.eventStatus, filters.eventType, filters.eventAmbassador, sortCriteria, applyMultiSort]);
@@ -1744,7 +1756,7 @@ export default function DirectoryScreen() {
             )}
             {activeTab === 'events' && (
               <>
-                {filters.eventStatus !== 'all' && <ActiveFilterChip label={filters.eventStatus === 'upcoming' ? (language === 'fr' ? 'A venir' : 'Upcoming') : filters.eventStatus === 'active' ? (language === 'fr' ? 'En cours' : 'Active') : filters.eventStatus === 'completed' ? (language === 'fr' ? 'Termine' : 'Done') : (language === 'fr' ? 'Annule' : 'Cancelled')} onRemove={() => setFilters(f => ({ ...f, eventStatus: 'all' }))} icon="event" />}
+                {filters.eventStatus !== 'all' && <ActiveFilterChip label={filters.eventStatus === 'upcoming' ? (language === 'fr' ? 'A venir' : 'Upcoming') : filters.eventStatus === 'active' ? (language === 'fr' ? 'En cours' : 'Active') : filters.eventStatus === 'completed' ? (language === 'fr' ? 'Termine' : 'Completed') : (language === 'fr' ? 'Annule' : 'Cancelled')} onRemove={() => setFilters(f => ({ ...f, eventStatus: 'all' }))} icon="event" />}
                 {filters.eventType !== 'all' && <ActiveFilterChip label={filters.eventType === '10_tirs' ? '10 Tirs' : filters.eventType === '10_tirs_sautee' ? (language === 'fr' ? '10 Tirs sautee' : '10 Lob Shots') : 'Precision'} onRemove={() => setFilters(f => ({ ...f, eventType: 'all' }))} icon="track-changes" />}
                 {filters.eventAmbassador !== 'all' && (() => { const amb = sponsoredEvents.find(e => e.ambassadorId === filters.eventAmbassador); return <ActiveFilterChip label={amb?.ambassadorName || filters.eventAmbassador} onRemove={() => setFilters(f => ({ ...f, eventAmbassador: 'all' }))} icon="verified" />; })()}
               </>
@@ -1950,7 +1962,7 @@ export default function DirectoryScreen() {
                 player: { icon: 'person', color: theme.primary },
                 club: { icon: 'home', color: theme.accent },
                 terrain: { icon: 'sports-soccer', color: theme.success },
-                tournament: { icon: 'emoji-events', color: theme.carreauColor },
+                tournament: { icon: 'emoji-events', color: DIRECTORY_TOURNAMENT_YELLOW },
               };
               const cfg = typeIcons[dup.type] || typeIcons.player;
               return (
@@ -2193,7 +2205,7 @@ export default function DirectoryScreen() {
                   player: { icon: 'person', color: theme.primary },
                   club: { icon: 'home', color: theme.accent },
                   terrain: { icon: 'sports-soccer', color: theme.success },
-                  tournament: { icon: 'emoji-events', color: theme.carreauColor },
+                  tournament: { icon: 'emoji-events', color: DIRECTORY_TOURNAMENT_YELLOW },
                 };
                 const cfg = typeIcons[log.mergeType] || typeIcons.player;
                 const canUndo = isUndoable(log);
@@ -2821,7 +2833,7 @@ const MemoizedTournamentCard = React.memo(({ item, getSharedPermission, t, langu
   const hasPosterImage = !!posterUrl && !isPosterPdf;
   return (
     <Pressable style={styles.itemCard} onPress={() => router.push(`/tournament/${item.id}`)}>
-      <View style={[styles.itemAvatar, { backgroundColor: theme.carreauColor }]}>
+      <View style={[styles.itemAvatar, { backgroundColor: DIRECTORY_TOURNAMENT_YELLOW }]}>
         {hasPosterImage ? (
           <Image source={{ uri: posterUrl }} style={styles.avatarImage} contentFit="cover" transition={200} placeholder={{ blurhash: blurhash.banner }} cachePolicy="memory-disk" recyclingKey={`${item.id}-poster`} />
         ) : isPosterPdf ? (
@@ -2837,8 +2849,8 @@ const MemoizedTournamentCard = React.memo(({ item, getSharedPermission, t, langu
           <Text style={styles.itemTitle} numberOfLines={1}>{item.name}</Text>
           {isOwner ? (
             <View style={styles.ownerBadge}>
-              <MaterialIcons name="person" size={9} color={theme.carreauColor} />
-              <Text style={[styles.ownerBadgeText, { color: theme.carreauColor }]}>{language === 'fr' ? 'Moi' : 'Mine'}</Text>
+              <MaterialIcons name="person" size={9} color={DIRECTORY_TOURNAMENT_YELLOW} />
+              <Text style={[styles.ownerBadgeText, { color: DIRECTORY_TOURNAMENT_YELLOW }]}>{language === 'fr' ? 'Moi' : 'Mine'}</Text>
             </View>
           ) : null}
           {hasSponsor ? (
@@ -2873,8 +2885,17 @@ const MemoizedEventCard = React.memo(({ item, language }: { item: any; language:
   const ev = item as SponsoredEvent;
   const evDate = new Date(ev.startTime);
   const endDate = new Date(ev.endTime);
-  const isActive = ev.status === 'active' || (ev.status === 'upcoming' && new Date() >= evDate && new Date() <= endDate);
-  const sc = isActive ? '#22C55E' : ev.status === 'completed' ? '#3B82F6' : ev.status === 'cancelled' ? '#EF4444' : '#F59E0B';
+  const now = new Date();
+  const effectiveStatus =
+    ev.status === 'cancelled' || ev.status === 'completed'
+      ? ev.status
+      : (!Number.isNaN(endDate.getTime()) && now.getTime() > endDate.getTime())
+        ? 'completed'
+        : (ev.status === 'upcoming' && !Number.isNaN(evDate.getTime()) && !Number.isNaN(endDate.getTime()) && now >= evDate && now <= endDate)
+          ? 'active'
+          : ev.status;
+  const isActive = effectiveStatus === 'active';
+  const sc = isActive ? '#22C55E' : effectiveStatus === 'completed' ? '#3B82F6' : effectiveStatus === 'cancelled' ? '#EF4444' : '#F59E0B';
   const typeColor: Record<string, string> = { '10_tirs': '#2563EB', '10_tirs_sautee': '#D97706', precision: '#7C3AED' };
   const tc = typeColor[ev.challengeType] || '#7C3AED';
   const challengeLabel = ev.challengeType === '10_tirs' ? '10 Tirs' : ev.challengeType === '10_tirs_sautee' ? (language === 'fr' ? '10 Tirs sautee' : '10 Lob Shots') : (language === 'fr' ? 'Precision' : 'Precision');
@@ -2890,7 +2911,7 @@ const MemoizedEventCard = React.memo(({ item, language }: { item: any; language:
           {ev.ambassadorName ? <View style={styles.metaItem}><MaterialIcons name="verified" size={12} color="#7C3AED" /><Text style={[styles.metaText, { color: '#7C3AED' }]}>{ev.ambassadorName}</Text></View> : null}
         </View>
         <View style={styles.itemTags}>
-          <View style={[styles.tag, { backgroundColor: sc + '15' }]}><View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: sc }} /><Text style={[styles.tagText, { color: sc }]}>{isActive ? (language === 'fr' ? 'En cours' : 'Active') : ev.status === 'upcoming' ? (language === 'fr' ? 'A venir' : 'Upcoming') : ev.status === 'completed' ? (language === 'fr' ? 'Termine' : 'Done') : (language === 'fr' ? 'Annule' : 'Cancelled')}</Text></View>
+          <View style={[styles.tag, { backgroundColor: sc + '15' }]}><View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: sc }} /><Text style={[styles.tagText, { color: sc }]}>{isActive ? (language === 'fr' ? 'En cours' : 'Active') : effectiveStatus === 'upcoming' ? (language === 'fr' ? 'A venir' : 'Upcoming') : effectiveStatus === 'completed' ? (language === 'fr' ? 'Termine' : 'Completed') : (language === 'fr' ? 'Annule' : 'Cancelled')}</Text></View>
           <View style={[styles.tag, { backgroundColor: tc + '12' }]}><Text style={[styles.tagText, { color: tc }]}>{challengeLabel}</Text></View>
           <View style={[styles.tag, { backgroundColor: theme.backgroundSecondary }]}><MaterialIcons name="group" size={10} color={theme.textSecondary} /><Text style={[styles.tagText, { color: theme.textSecondary }]}>{ev.maxParticipants}</Text></View>
         </View>

@@ -3,7 +3,7 @@
  * All content is centered using flexbox. Animations do not displace anchor point.
  */
 import React, { useEffect } from 'react';
-import { View, Text, Pressable, StyleSheet, Modal, Platform } from 'react-native';
+import { View, Text, Pressable, StyleSheet, Modal, Platform, ScrollView } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import Animated, {
   FadeIn,
@@ -133,7 +133,12 @@ export default function BadgeUnlockModal({ visible, badgeId, language, onClose }
           </View>
 
           {/* Centered column: flex bookends keep hero + CTA visually balanced */}
-          <View style={[s.centeredContent, { paddingBottom: insets.bottom + 12 }]}>
+          <ScrollView
+            style={s.contentScroll}
+            contentContainerStyle={[s.centeredContent, { paddingBottom: insets.bottom + 20 }]}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+          >
             <View style={s.flexBookend} />
             <View style={s.heroColumn}>
               {/* Unlock banner first — keeps icon from overlapping the label on Android (FadeIn layout) */}
@@ -206,7 +211,7 @@ export default function BadgeUnlockModal({ visible, badgeId, language, onClose }
                 <Text style={s.closeBtnText}>{isFr ? 'Super !' : 'Awesome!'}</Text>
               </Pressable>
             </Animated.View>
-          </View>
+          </ScrollView>
         </LinearGradient>
       </View>
     </Modal>
@@ -239,23 +244,29 @@ const s = StyleSheet.create({
     position: 'absolute',
   },
   // Main column: full width + flex bookends vertically center the hero block
-  centeredContent: {
+  contentScroll: {
     flex: 1,
+    zIndex: 1,
+  },
+  centeredContent: {
+    flexGrow: 1,
     width: '100%',
     flexDirection: 'column',
+    justifyContent: 'center',
     paddingHorizontal: 24,
     paddingTop: 48,
     zIndex: 1,
   },
   flexBookend: {
-    flex: 1,
-    minHeight: 8,
+    flexGrow: 1,
+    minHeight: 10,
   },
   heroColumn: {
     width: '100%',
     maxWidth: 400,
     alignSelf: 'center',
     alignItems: 'center',
+    flexShrink: 1,
   },
   /** Reserves vertical space so entering animations never collapse into the icon. */
   unlockBannerSlot: {
@@ -273,23 +284,24 @@ const s = StyleSheet.create({
   },
   textBlock: {
     width: '100%',
-    maxWidth: 320,
+    maxWidth: 340,
     alignItems: 'center',
     zIndex: 2,
     elevation: 0,
+    flexShrink: 1,
   },
   animFullWidth: {
     width: '100%',
     alignItems: 'center',
-    marginBottom: 14,
+    marginBottom: 12,
   },
   // Icon area — fixed box; pulse scale clipped inside (no elevation bleed on Android)
   iconArea: {
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 24,
-    width: 172,
-    height: 172,
+    marginBottom: 18,
+    width: 160,
+    height: 160,
     flexShrink: 0,
     overflow: 'hidden',
     zIndex: 1,
@@ -297,9 +309,9 @@ const s = StyleSheet.create({
   },
   glowRing: {
     position: 'absolute',
-    width: 160,
-    height: 160,
-    borderRadius: 80,
+    width: 136,
+    height: 136,
+    borderRadius: 68,
     borderWidth: 2,
     ...Platform.select({
       ios: { shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.5, shadowRadius: 30 },
@@ -307,24 +319,24 @@ const s = StyleSheet.create({
     }),
   },
   iconContainer: {
-    width: 148,
-    height: 148,
-    borderRadius: 74,
+    width: 136,
+    height: 136,
+    borderRadius: 68,
     alignItems: 'center',
     justifyContent: 'center',
   },
   iconRing: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
+    width: 112,
+    height: 112,
+    borderRadius: 56,
     borderWidth: 3,
     alignItems: 'center',
     justifyContent: 'center',
   },
   iconInner: {
-    width: 92,
-    height: 92,
-    borderRadius: 46,
+    width: 86,
+    height: 86,
+    borderRadius: 43,
     alignItems: 'center',
     justifyContent: 'center',
     ...Platform.select({
@@ -351,10 +363,10 @@ const s = StyleSheet.create({
     includeFontPadding: false,
   },
   badgeName: {
-    fontSize: 26,
+    fontSize: 24,
     fontWeight: '900',
     textAlign: 'center',
-    lineHeight: 32,
+    lineHeight: 30,
     letterSpacing: -0.3,
     width: '100%',
   },
@@ -364,6 +376,7 @@ const s = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
     alignSelf: 'center',
+    maxWidth: '100%',
   },
   catChipText: {
     fontSize: 12,
@@ -377,6 +390,7 @@ const s = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 23,
     width: '100%',
+    maxWidth: 330,
   },
   xpReward: {
     flexDirection: 'row',
@@ -399,13 +413,16 @@ const s = StyleSheet.create({
     maxWidth: 320,
     alignSelf: 'center',
     flexShrink: 0,
+    marginTop: 12,
+    zIndex: 10,
+    elevation: 10,
   },
   closeBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    paddingVertical: 18,
+    paddingVertical: 16,
     borderRadius: 18,
     width: '100%',
     ...Platform.select({

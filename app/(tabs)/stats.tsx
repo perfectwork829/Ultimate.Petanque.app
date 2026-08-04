@@ -139,7 +139,6 @@ export default function StatsScreen() {
               </Pressable>
               <Pressable style={styles.progressionButton} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setShowProgressionModal(true); }}>
                 <MaterialIcons name="trending-up" size={18} color="#FFF" />
-                <Text style={styles.progressionButtonText}>{t('stats', 'progression')}</Text>
               </Pressable>
               <Pressable style={styles.historyButton} onPress={() => router.push('/history')}>
                 <MaterialIcons name="history" size={22} color="rgba(255,255,255,0.7)" />

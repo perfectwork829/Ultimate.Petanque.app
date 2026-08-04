@@ -222,7 +222,7 @@ const BadgeItem = React.memo(function BadgeItem({ badge, lang, isFr, isUnlocked,
 }) {
   if (isUnlocked && unlockedAt) {
     return (
-      <Pressable onPress={onPress}>
+      <Pressable onPress={onPress} hitSlop={6} android_ripple={{ color: badge.color + '16', borderless: false }}>
         <View style={[s.badgeCard, { borderLeftWidth: 3, borderLeftColor: badge.color }]}>
           <View style={s.badgeCardTop}>
             <View style={[s.badgeCardIcon, { backgroundColor: badge.color + '20' }]}>
@@ -233,7 +233,7 @@ const BadgeItem = React.memo(function BadgeItem({ badge, lang, isFr, isUnlocked,
             </View>
             <View style={s.badgeCardInfo}>
               <View style={s.badgeCardNameRow}>
-                <Text style={s.badgeCardName} numberOfLines={1}>{getBadgeName(badge.id, lang)}</Text>
+                <Text style={s.badgeCardName} numberOfLines={2}>{getBadgeName(badge.id, lang)}</Text>
                 <View style={[s.badgeXpChip, { backgroundColor: badge.color + '15' }]}>
                   <MaterialIcons name="bolt" size={12} color={badge.color} />
                   <Text style={[s.badgeXpText, { color: badge.color }]}>+{badge.xpReward}</Text>
@@ -254,7 +254,7 @@ const BadgeItem = React.memo(function BadgeItem({ badge, lang, isFr, isUnlocked,
     );
   }
   return (
-    <Pressable onPress={onPress}>
+    <Pressable onPress={onPress} hitSlop={6} android_ripple={{ color: theme.textMuted + '14', borderless: false }}>
       <View style={[s.badgeCard, { opacity: 0.7 }]}>
         <View style={s.badgeCardTop}>
           <View style={[s.badgeCardIcon, { backgroundColor: theme.backgroundSecondary }]}>
@@ -262,7 +262,7 @@ const BadgeItem = React.memo(function BadgeItem({ badge, lang, isFr, isUnlocked,
           </View>
           <View style={s.badgeCardInfo}>
             <View style={s.badgeCardNameRow}>
-              <Text style={[s.badgeCardName, { color: theme.textSecondary }]} numberOfLines={1}>{getBadgeName(badge.id, lang)}</Text>
+              <Text style={[s.badgeCardName, { color: theme.textSecondary }]} numberOfLines={2}>{getBadgeName(badge.id, lang)}</Text>
               <View style={s.badgeXpChip}>
                 <MaterialIcons name="bolt" size={12} color={theme.textMuted} />
                 <Text style={s.badgeXpText}>+{badge.xpReward}</Text>
@@ -354,7 +354,7 @@ function BadgesSectionList({ xp, language, isFr, lang, userBadges, totalBadges, 
             {categoryStats.map((cat: any) => (
               <Pressable key={cat.id} style={[s.catProgressCard, activeCategory === cat.id && { borderColor: cat.color, borderWidth: 2.5 }]} onPress={() => setActiveCategory(activeCategory === cat.id ? 'all' : cat.id)}>
                 <View style={[s.catProgressIcon, { backgroundColor: cat.color + '15' }]}><MaterialIcons name={cat.icon as any} size={20} color={cat.color} /></View>
-                <Text style={s.catProgressLabel} numberOfLines={1}>{isFr ? cat.labelFr : cat.labelEn}</Text>
+                <Text style={s.catProgressLabel} numberOfLines={2}>{isFr ? cat.labelFr : cat.labelEn}</Text>
                 <Text style={[s.catProgressCount, { color: cat.color }]}>{cat.unlocked}/{cat.total}</Text>
                 <View style={s.catProgressBarTrack}><View style={[s.catProgressBarFill, { width: `${Math.max(4, cat.percent)}%`, backgroundColor: cat.color }]} /></View>
               </Pressable>
@@ -370,7 +370,7 @@ function BadgesSectionList({ xp, language, isFr, lang, userBadges, totalBadges, 
                   return (
                     <Pressable key={badge.id} onPress={() => setSelectedBadgeId(badge.id)} style={[s.recentBadge, { borderColor: badge.color + '30' }]}>
                       <View style={[s.recentBadgeIcon, { backgroundColor: badge.color + '20' }]}><MaterialIcons name={badge.icon as any} size={22} color={badge.color} /></View>
-                      <Text style={[s.recentBadgeName, { color: badge.color }]} numberOfLines={1}>{getBadgeName(badge.id, lang)}</Text>
+                      <Text style={[s.recentBadgeName, { color: badge.color }]} numberOfLines={2}>{getBadgeName(badge.id, lang)}</Text>
                       <Text style={s.recentBadgeDate}>{new Date(ub.unlockedAt).toLocaleDateString(isFr ? 'fr-FR' : 'en-US', { day: 'numeric', month: 'short' })}</Text>
                     </Pressable>
                   );
@@ -673,9 +673,9 @@ const s = StyleSheet.create({
 
   // Category Progress
   catProgressScroll: { gap: 10, paddingBottom: 4, paddingRight: 4 },
-  catProgressCard: { width: 110, backgroundColor: theme.surface, borderRadius: 14, padding: 12, alignItems: 'center', gap: 6, borderWidth: 1.5, borderColor: theme.border, ...theme.shadows.card },
+  catProgressCard: { width: 118, minHeight: 120, backgroundColor: theme.surface, borderRadius: 14, padding: 12, alignItems: 'center', justifyContent: 'flex-start', gap: 6, borderWidth: 1.5, borderColor: theme.border, ...theme.shadows.card },
   catProgressIcon: { width: 38, height: 38, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
-  catProgressLabel: { fontSize: 11, fontWeight: '600', color: theme.textSecondary, textAlign: 'center' },
+  catProgressLabel: { fontSize: 11, fontWeight: '600', color: theme.textSecondary, textAlign: 'center', lineHeight: 14, minHeight: 28 },
   catProgressCount: { fontSize: 14, fontWeight: '800' },
   catProgressBarTrack: { width: '100%', height: 4, backgroundColor: theme.backgroundSecondary, borderRadius: 2, overflow: 'hidden' },
   catProgressBarFill: { height: '100%', borderRadius: 2 },
@@ -684,15 +684,15 @@ const s = StyleSheet.create({
   recentSection: { marginTop: 16, marginBottom: 8 },
   recentHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10 },
   recentTitle: { fontSize: 14, fontWeight: '700', color: theme.textPrimary },
-  recentBadge: { width: 100, backgroundColor: theme.surface, borderRadius: 14, padding: 10, alignItems: 'center', gap: 6, borderWidth: 1, ...theme.shadows.card },
+  recentBadge: { width: 112, minHeight: 116, backgroundColor: theme.surface, borderRadius: 14, padding: 10, alignItems: 'center', justifyContent: 'flex-start', gap: 6, borderWidth: 1, ...theme.shadows.card },
   recentBadgeIcon: { width: 42, height: 42, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  recentBadgeName: { fontSize: 10, fontWeight: '700', textAlign: 'center' },
+  recentBadgeName: { fontSize: 10, fontWeight: '700', textAlign: 'center', lineHeight: 13, minHeight: 26 },
   recentBadgeDate: { fontSize: 9, color: theme.textMuted, fontWeight: '500' },
 
   // Filter chips
   filterRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 16, marginBottom: 14 },
-  filterChip: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, backgroundColor: theme.surface, borderWidth: 1.5, borderColor: theme.border },
-  filterChipText: { fontSize: 12, fontWeight: '600', color: theme.textSecondary },
+  filterChip: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 8, minHeight: 36, borderRadius: 20, backgroundColor: theme.surface, borderWidth: 1.5, borderColor: theme.border },
+  filterChipText: { fontSize: 12, fontWeight: '600', color: theme.textSecondary, flexShrink: 1 },
   filterChipCount: { backgroundColor: theme.backgroundSecondary, paddingHorizontal: 6, paddingVertical: 1, borderRadius: 8, marginLeft: 2 },
   filterChipCountText: { fontSize: 10, fontWeight: '700', color: theme.textMuted },
 
@@ -711,18 +711,18 @@ const s = StyleSheet.create({
   listSectionTitle: { fontSize: 14, fontWeight: '700', color: theme.textPrimary },
 
   // Badge Cards
-  badgeCard: { backgroundColor: theme.surface, borderRadius: theme.borderRadius.lg, padding: 16, marginBottom: 10, ...theme.shadows.card },
-  badgeCardTop: { flexDirection: 'row', gap: 14 },
+  badgeCard: { backgroundColor: theme.surface, borderRadius: theme.borderRadius.lg, padding: 16, marginBottom: 10, minHeight: 104, overflow: 'hidden', ...theme.shadows.card },
+  badgeCardTop: { flexDirection: 'row', alignItems: 'flex-start', gap: 14 },
   badgeCardIcon: { width: 56, height: 56, borderRadius: 16, alignItems: 'center', justifyContent: 'center', position: 'relative' },
   badgeCheckmark: { position: 'absolute', bottom: -2, right: -2, width: 18, height: 18, borderRadius: 9, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: theme.surface },
-  badgeCardInfo: { flex: 1 },
-  badgeCardNameRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
-  badgeCardName: { fontSize: 15, fontWeight: '700', color: theme.textPrimary, flex: 1 },
-  badgeXpChip: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: theme.backgroundSecondary, paddingHorizontal: 8, paddingVertical: 3, borderRadius: theme.borderRadius.full },
+  badgeCardInfo: { flex: 1, flexShrink: 1, minWidth: 0 },
+  badgeCardNameRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, marginBottom: 4 },
+  badgeCardName: { fontSize: 15, fontWeight: '700', color: theme.textPrimary, flex: 1, flexShrink: 1, minWidth: 0, lineHeight: 19 },
+  badgeXpChip: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: theme.backgroundSecondary, paddingHorizontal: 8, paddingVertical: 3, borderRadius: theme.borderRadius.full, flexShrink: 0, alignSelf: 'flex-start' },
   badgeXpText: { fontSize: 11, fontWeight: '700', color: theme.textMuted },
-  badgeCardDesc: { fontSize: 13, color: theme.textSecondary, lineHeight: 18, marginBottom: 10 },
+  badgeCardDesc: { fontSize: 13, color: theme.textSecondary, lineHeight: 18, marginBottom: 10, flexShrink: 1 },
   badgeUnlockDate: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  badgeUnlockDateText: { fontSize: 12, fontWeight: '600' },
+  badgeUnlockDateText: { fontSize: 12, fontWeight: '600', flexShrink: 1, lineHeight: 16 },
   badgeProgressSection: { gap: 6 },
   badgeProgressBarOuter: { height: 6, backgroundColor: theme.backgroundSecondary, borderRadius: 3, overflow: 'hidden' },
   badgeProgressBarInner: { height: '100%', borderRadius: 3, minWidth: 4 },
@@ -738,11 +738,11 @@ const s = StyleSheet.create({
   xpGridValue: { fontSize: 14, fontWeight: '800' },
 
   // Milestones
-  milestonesCard: { backgroundColor: theme.surface, borderRadius: theme.borderRadius.lg, padding: 20, ...theme.shadows.card },
+  milestonesCard: { backgroundColor: theme.surface, borderRadius: theme.borderRadius.lg, padding: 20, overflow: 'hidden', ...theme.shadows.card },
   milestoneTrack: { flexDirection: 'row', justifyContent: 'space-between' },
   milestoneItem: { alignItems: 'center', flex: 1, position: 'relative' },
   milestoneConnector: { position: 'absolute', top: 18, left: -16, right: 16, height: 2, backgroundColor: theme.border, zIndex: -1 },
   milestoneCircle: { width: 36, height: 36, borderRadius: 18, backgroundColor: theme.backgroundSecondary, borderWidth: 2, borderColor: theme.border, alignItems: 'center', justifyContent: 'center', marginBottom: 6 },
-  milestoneName: { fontSize: 8, fontWeight: '600', color: theme.textMuted, textAlign: 'center' },
+  milestoneName: { fontSize: 8, fontWeight: '600', color: theme.textMuted, textAlign: 'center', lineHeight: 10, minHeight: 20 },
   milestoneXp: { fontSize: 8, fontWeight: '500', color: theme.textMuted, marginTop: 1 },
 });

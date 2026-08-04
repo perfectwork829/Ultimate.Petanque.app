@@ -30,6 +30,7 @@ let BannerAdComponent: React.ComponentType<{
   unitId: string;
   size: string;
   requestOptions?: { requestNonPersonalizedAdsOnly?: boolean };
+  onAdLoaded?: () => void;
   onAdFailedToLoad?: () => void;
 }> | null = null;
 let BannerAdSizeEnum: { ANCHORED_ADAPTIVE_BANNER: string } | null = null;
@@ -130,14 +131,53 @@ const goldStyles = StyleSheet.create({
   cta: { width: 28, height: 28, borderRadius: 8, backgroundColor: '#F59E0B20', alignItems: 'center' as const, justifyContent: 'center' as const },
 });
 
+
+// ============================================
+// NORMAL AD FALLBACK
+// Used only when no gold sponsor is active and the native AdMob component
+// is unavailable in the current build. This keeps the Home ad slot visible
+// as a normal ad banner instead of disappearing or showing a sponsor banner.
+// ============================================
+const NormalAdFallbackContent = React.memo(() => (
+  <View style={styles.fallbackBanner}>
+    <View style={styles.fallbackIconWrap}>
+      <MaterialIcons name="campaign" size={17} color="#FFFFFF" />
+    </View>
+    <View style={styles.fallbackTextWrap}>
+      <Text style={styles.fallbackLabel}>ADVERTISEMENT</Text>
+      <Text style={styles.fallbackText} numberOfLines={1}>Ad banner</Text>
+    </View>
+  </View>
+));
+
+const NormalAdFallback = React.memo(({ position = 'inline', bottomOffset = 0 }: AdBannerProps) => {
+  const content = <NormalAdFallbackContent />;
+
+  if (position === 'sticky') {
+    return (
+      <View style={[styles.stickyContainer, { paddingBottom: bottomOffset }]}> 
+        {content}
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.inlineContainer}>
+      {content}
+    </View>
+  );
+});
+
 // ============================================
 // MAIN AdBanner COMPONENT
 // ============================================
 const AdBanner = React.memo(({ position = 'inline', bottomOffset = 0 }: AdBannerProps) => {
-  const [isAvailable, setIsAvailable] = useState(true);
   const [nonPersonalized, setNonPersonalized] = useState(true);
   const [goldSponsor, setGoldSponsor] = useState<Ambassador | null>(null);
   const [goldLoaded, setGoldLoaded] = useState(false);
+  const [adRetryKey, setAdRetryKey] = useState(0);
+  const [adLoaded, setAdLoaded] = useState(false);
+  const [adFailed, setAdFailed] = useState(false);
   const appUI = useAppUI();
   const isPremium = appUI.isPremium;
 
@@ -145,10 +185,8 @@ const AdBanner = React.memo(({ position = 'inline', bottomOffset = 0 }: AdBanner
     try {
       const gold = await getActiveGoldSponsorForAdReplacement();
       setGoldSponsor(gold);
-      if (!gold) setIsAvailable(true);
     } catch {
       setGoldSponsor(null);
-      setIsAvailable(true);
     } finally {
       setGoldLoaded(true);
     }
@@ -156,9 +194,6 @@ const AdBanner = React.memo(({ position = 'inline', bottomOffset = 0 }: AdBanner
 
   useEffect(() => {
     loadAdsModule();
-    if (!adsModuleAvailable) {
-      setIsAvailable(false);
-    }
     canShowPersonalizedAds().then(can => setNonPersonalized(!can));
     refreshGoldSponsor();
     const unsubscribe = subscribeGoldSponsorAdRefresh(() => {
@@ -171,41 +206,67 @@ const AdBanner = React.memo(({ position = 'inline', bottomOffset = 0 }: AdBanner
 
   useFocusEffect(useCallback(() => {
     refreshGoldSponsor();
+    // If there is no gold sponsor, allow AdMob to request again when returning to this screen.
+    setAdLoaded(false);
+    setAdFailed(false);
+    setAdRetryKey(prev => prev + 1);
   }, [refreshGoldSponsor]));
 
-  // Hide ads for premium users
+  // Hide banners for premium users.
   if (isPremium) return null;
 
-  // Gold sponsor replaces ad content
-  if (goldLoaded && goldSponsor) {
+  // Wait until the gold sponsor check finishes, then decide:
+  // gold sponsor => sponsor banner, no gold sponsor => normal AdMob banner.
+  if (!goldLoaded) return null;
+
+  if (goldSponsor) {
     return <GoldSponsorInline sponsor={goldSponsor} />;
   }
 
-  if (!isAvailable || !adsModuleAvailable || !BannerAdComponent || !AD_UNIT_IDS.banner) {
-    return null;
+  // No gold sponsor: show normal AdMob banner.
+  // Gold sponsor replacement is only a privilege when there is an active gold sponsor.
+  // If the native AdMob component is unavailable in this build, keep a normal
+  // non-sponsor ad slot visible instead of returning null.
+  if (!adsModuleAvailable || !BannerAdComponent || !BannerAdSizeEnum || !AD_UNIT_IDS.banner) {
+    return <NormalAdFallback position={position} bottomOffset={bottomOffset} />;
   }
+
+  const banner = (
+    <BannerAdComponent
+      key={`banner-${position}-${adRetryKey}`}
+      unitId={AD_UNIT_IDS.banner}
+      size={BannerAdSizeEnum.ANCHORED_ADAPTIVE_BANNER}
+      requestOptions={{ requestNonPersonalizedAdsOnly: nonPersonalized }}
+      onAdLoaded={() => {
+        setAdLoaded(true);
+        setAdFailed(false);
+      }}
+      onAdFailedToLoad={() => {
+        setAdLoaded(false);
+        setAdFailed(true);
+        // Do not permanently hide the AdBanner. AdMob may return no-fill temporarily,
+        // and the banner will retry on screen focus/remount.
+      }}
+    />
+  );
 
   if (position === 'sticky') {
     return (
-      <View style={[styles.stickyContainer, { paddingBottom: bottomOffset }]}>
-        <BannerAdComponent
-          unitId={AD_UNIT_IDS.banner}
-          size={BannerAdSizeEnum.ANCHORED_ADAPTIVE_BANNER}
-          requestOptions={{ requestNonPersonalizedAdsOnly: nonPersonalized }}
-          onAdFailedToLoad={() => setIsAvailable(false)}
-        />
+      <View style={[styles.stickyContainer, { paddingBottom: bottomOffset }]}> 
+        {!adLoaded || adFailed ? <NormalAdFallbackContent /> : null}
+        <View style={adLoaded && !adFailed ? undefined : styles.adMobLoadingLayer}>
+          {banner}
+        </View>
       </View>
     );
   }
 
   return (
     <View style={styles.inlineContainer}>
-      <BannerAdComponent
-        unitId={AD_UNIT_IDS.banner}
-        size={BannerAdSizeEnum.ANCHORED_ADAPTIVE_BANNER}
-        requestOptions={{ requestNonPersonalizedAdsOnly: nonPersonalized }}
-        onAdFailedToLoad={() => setIsAvailable(false)}
-      />
+      {!adLoaded || adFailed ? <NormalAdFallbackContent /> : null}
+      <View style={adLoaded && !adFailed ? undefined : styles.adMobLoadingLayer}>
+        {banner}
+      </View>
     </View>
   );
 });
@@ -216,9 +277,54 @@ const styles = StyleSheet.create({
   inlineContainer: {
     alignItems: 'center',
     marginVertical: 12,
-    backgroundColor: theme.backgroundSecondary,
+    backgroundColor: 'transparent',
     borderRadius: theme.borderRadius.sm,
     overflow: 'hidden',
+  },
+  fallbackBanner: {
+    width: '100%',
+    minHeight: 64,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: theme.borderRadius.sm,
+    borderWidth: 1.5,
+    borderColor: '#38BDF8',
+    backgroundColor: '#E0F2FE',
+  },
+  fallbackIconWrap: {
+    width: 34,
+    height: 34,
+    borderRadius: 11,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    backgroundColor: '#0284C7',
+  },
+  fallbackTextWrap: {
+    alignItems: 'flex-start' as const,
+  },
+  fallbackLabel: {
+    fontSize: 9,
+    fontWeight: '900' as const,
+    color: '#0369A1',
+    letterSpacing: 1.1,
+  },
+  fallbackText: {
+    marginTop: 1,
+    fontSize: 13,
+    fontWeight: '800' as const,
+    color: '#0F172A',
+  },
+  adMobLoadingLayer: {
+    position: 'absolute' as const,
+    left: 0,
+    right: 0,
+    top: 0,
+    alignItems: 'center' as const,
+    opacity: 0,
   },
   stickyContainer: {
     alignItems: 'center',

@@ -6,19 +6,18 @@ import { Redirect, router } from 'expo-router';
 import * as Linking from 'expo-linking';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import theme from '@/constants/theme';
-import { checkPostOAuthDeviceBinding, recordAccountCreation } from '@/services/deviceFingerprintService';
+import { ensureDeviceBoundToAccount } from '@/services/deviceFingerprintService';
 import { useLanguage } from '@/hooks/useLanguage';
 import { hasRequiredPlayerCity } from '@/utils/playerLocationRequirement';
 
 const ONBOARDING_KEY = 'hasSeenOnboarding';
+const PENDING_DEVICE_BINDING_ALERT_KEY = '@pending_device_binding_alert';
 
 // ============================================
 // Deep Link Parser
 // ============================================
 function parseDeepLink(url: string): { type: 'share' | 'meetup'; code: string } | null {
   try {
-    // Handle custom scheme: ultimatepetanque://share/CODE or ultimatepetanque://meetup/CODE
-    // Handle https: https://ultimatepetanque.app/share/CODE or /meetup/CODE
     const parsed = Linking.parse(url);
     const path = parsed.path || '';
     const segments = path.split('/').filter(Boolean);
@@ -30,7 +29,6 @@ function parseDeepLink(url: string): { type: 'share' | 'meetup'; code: string } 
       return { type: 'meetup', code: segments[1] };
     }
 
-    // Also check queryParams as fallback (e.g. ?code=XXX)
     if (segments.length >= 1 && segments[0] === 'share' && parsed.queryParams?.code) {
       return { type: 'share', code: String(parsed.queryParams.code) };
     }
@@ -50,28 +48,34 @@ function parseDeepLink(url: string): { type: 'share' | 'meetup'; code: string } 
 function ProfileChecker() {
   const { user, logout } = useAuth();
   const { showAlert } = useAlert();
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const [checking, setChecking] = useState(true);
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
   const supabase = getSupabaseClient();
   const [needsConsent, setNeedsConsent] = useState(false);
+  const [deviceBindingAcknowledged, setDeviceBindingAcknowledged] = useState(false);
+  const [waitingForDeviceBindingAck, setWaitingForDeviceBindingAck] = useState(false);
   const pendingDeepLinkRef = useRef<{ type: 'share' | 'meetup'; code: string } | null>(null);
   const profileReadyRef = useRef(false);
   const oauthCheckedRef = useRef(false);
+  const deviceBindingAlertShownRef = useRef(false);
 
-  // Handle deep link navigation after profile is ready
+  const showDeviceBoundConfirmation = (onOk: () => void) => {
+    showAlert(
+      t('login', 'deviceBindingTitle'),
+      t('login', 'deviceBindingMessage'),
+      [{ text: 'OK', onPress: onOk }]
+    );
+  };
+
   const handleDeepLinkNavigation = (link: { type: 'share' | 'meetup'; code: string }) => {
-    // Small delay to let the tabs mount before navigating
     setTimeout(() => {
       if (link.type === 'meetup') {
-        // Navigate to meetup lookup: first try finding by code, then redirect
         router.replace('/(tabs)');
         setTimeout(() => {
-          // Pass the code as a search param to share page which handles meetup codes too
           router.push({ pathname: '/share', params: { deepLinkCode: link.code, deepLinkType: 'meetup' } });
         }, 300);
       } else {
-        // Share code: navigate to share page with pre-filled code
         router.replace('/(tabs)');
         setTimeout(() => {
           router.push({ pathname: '/share', params: { deepLinkCode: link.code, deepLinkType: 'share' } });
@@ -80,7 +84,6 @@ function ProfileChecker() {
     }, 200);
   };
 
-  // Listen for deep links (app already open)
   useEffect(() => {
     const subscription = Linking.addEventListener('url', ({ url }) => {
       const link = parseDeepLink(url);
@@ -93,7 +96,6 @@ function ProfileChecker() {
     return () => subscription.remove();
   }, []);
 
-  // Check initial URL (app opened via deep link)
   useEffect(() => {
     Linking.getInitialURL().then((url) => {
       if (url) {
@@ -112,13 +114,12 @@ function ProfileChecker() {
         return;
       }
 
-      // Post-OAuth device binding check (runs once per session)
+      // Post-OAuth/session device binding check (runs once per session).
       if (!oauthCheckedRef.current && user?.email) {
         oauthCheckedRef.current = true;
         try {
-          const { allowed, reason } = await checkPostOAuthDeviceBinding(user.email);
-          if (!allowed && reason === 'device_bound_to_other_account') {
-            // Device is bound to another account — kick user out
+          const binding = await ensureDeviceBoundToAccount(user.email, 'google', user.id);
+          if (!binding.allowed && binding.reason === 'device_bound_to_other_account') {
             showAlert(
               t('common', 'error'),
               t('login', 'deviceBindingOAuthKicked'),
@@ -133,9 +134,32 @@ function ProfileChecker() {
             setChecking(false);
             return;
           }
-          // Record device binding for OAuth users (first-time)
-          recordAccountCreation(user.email, 'google').catch(() => {});
-        } catch { /* silent — don't block login on error */ }
+
+          const pendingBindingAlertFor = await AsyncStorage.getItem(PENDING_DEVICE_BINDING_ALERT_KEY);
+          const shouldShowPendingLoginAlert = !!pendingBindingAlertFor;
+          const shouldShowNewOAuthBindingAlert = binding.bound && !binding.alreadyBound;
+
+          // Keep this screen in a blocking/loading state while the alert is visible.
+          // This prevents the final <Redirect href="/(tabs)" /> from sending the user
+          // to the homepage before they press OK.
+          if (!deviceBindingAcknowledged && (shouldShowPendingLoginAlert || shouldShowNewOAuthBindingAlert)) {
+            setWaitingForDeviceBindingAck(true);
+            setChecking(false);
+
+            if (!deviceBindingAlertShownRef.current) {
+              deviceBindingAlertShownRef.current = true;
+              showDeviceBoundConfirmation(async () => {
+                await AsyncStorage.removeItem(PENDING_DEVICE_BINDING_ALERT_KEY);
+                setChecking(true);
+                setWaitingForDeviceBindingAck(false);
+                setDeviceBindingAcknowledged(true);
+              });
+            }
+            return;
+          }
+        } catch {
+          // Do not block legitimate users on unexpected errors.
+        }
       }
 
       try {
@@ -154,8 +178,6 @@ function ProfileChecker() {
 
         if (error) throw error;
 
-        // Check if username is just the email prefix (auto-generated by trigger)
-        // If so, user hasn't completed the express profile step
         const emailPrefix = user?.email ? user.email.split('@')[0] : '';
         const hasRealUsername = data?.username && data.username.trim() !== '' && data.username.trim() !== emailPrefix;
         const hasCity = hasRequiredPlayerCity(playerRow);
@@ -165,7 +187,6 @@ function ProfileChecker() {
         } else if (!data?.consent_accepted) {
           setNeedsConsent(true);
         } else {
-          // Profile is ready - handle pending deep link
           profileReadyRef.current = true;
           if (pendingDeepLinkRef.current) {
             const link = pendingDeepLinkRef.current;
@@ -184,9 +205,9 @@ function ProfileChecker() {
     };
 
     checkProfile();
-  }, [user?.id]);
+  }, [user?.id, deviceBindingAcknowledged]);
 
-  if (checking) {
+  if (checking || waitingForDeviceBindingAck) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={theme.primary} />

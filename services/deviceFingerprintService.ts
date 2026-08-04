@@ -12,9 +12,12 @@ const STORAGE_KEY = '@device_registration_history';
 const MAX_ACCOUNTS_PER_DEVICE = 1;
 const COOLDOWN_HOURS = 24; // hours between account creations
 
-/** Dev / QA only — set EXPO_PUBLIC_SKIP_DEVICE_ACCOUNT_LIMIT=true in .env */
+/**
+ * QA/dev can explicitly disable this with EXPO_PUBLIC_SKIP_DEVICE_ACCOUNT_LIMIT=true.
+ * Do NOT disable automatically in __DEV__, otherwise the one-account-per-device
+ * security rule does not run in emulator/dev builds.
+ */
 function isDeviceAccountLimitDisabled(): boolean {
-  if (typeof __DEV__ !== 'undefined' && __DEV__) return true;
   const flag = process.env.EXPO_PUBLIC_SKIP_DEVICE_ACCOUNT_LIMIT;
   return flag === '1' || flag === 'true';
 }
@@ -23,6 +26,13 @@ interface DeviceRegistrationHistory {
   fingerprint: string;
   registrations: { email: string; date: string }[];
 }
+
+export type DeviceBindingResult = {
+  allowed: boolean;
+  reason?: string;
+  bound?: boolean;
+  alreadyBound?: boolean;
+};
 
 /**
  * Generate a stable device fingerprint using available platform info
@@ -88,6 +98,16 @@ export async function canCreateAccount(email: string): Promise<{ allowed: boolea
     // 1. Check local history first (fast)
     const localHistory = await getLocalHistory();
     if (localHistory) {
+      const normalizedEmail = email.toLowerCase();
+      const alreadyRegisteredThisEmail = localHistory.registrations.some(
+        r => r.email.toLowerCase() === normalizedEmail
+      );
+
+      // Same email = allow retry/recovery flow. Do this before max-account check.
+      if (alreadyRegisteredThisEmail) {
+        return { allowed: true };
+      }
+
       // Check max accounts
       if (localHistory.registrations.length >= MAX_ACCOUNTS_PER_DEVICE) {
         return { allowed: false, reason: 'max_accounts_reached' };
@@ -101,12 +121,6 @@ export async function canCreateAccount(email: string): Promise<{ allowed: boolea
         if (hoursSince < COOLDOWN_HOURS) {
           return { allowed: false, reason: 'cooldown_active' };
         }
-      }
-
-      // Check duplicate email
-      if (localHistory.registrations.some(r => r.email.toLowerCase() === email.toLowerCase())) {
-        // Same email = likely re-registering, allow it
-        return { allowed: true };
       }
     }
 
@@ -151,27 +165,94 @@ export async function canCreateAccount(email: string): Promise<{ allowed: boolea
 }
 
 /**
- * Record a new account creation for this device
+ * Record/bind this device to the authenticated account.
+ * The operation is idempotent locally and best-effort server-side.
  */
-export async function recordAccountCreation(email: string, authMethod: string = 'email'): Promise<void> {
+export async function recordDeviceBinding(
+  email: string,
+  authMethod: string = 'email',
+  userId?: string | null
+): Promise<{ bound: boolean; alreadyBound: boolean }> {
+  const normalizedEmail = email.trim().toLowerCase();
+  if (!normalizedEmail || isDeviceAccountLimitDisabled()) {
+    return { bound: false, alreadyBound: false };
+  }
+
   try {
     const fingerprint = await getDeviceFingerprint();
     const now = new Date().toISOString();
 
-    // Save locally
+    // Save locally, but do not duplicate the same email.
     const history = await getLocalHistory() || { fingerprint, registrations: [] };
-    history.registrations.push({ email: email.toLowerCase(), date: now });
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(history));
+    const alreadyBoundLocally = history.registrations.some(
+      r => r.email.toLowerCase() === normalizedEmail
+    );
 
-    // Save server-side (best effort)
+    if (!alreadyBoundLocally) {
+      history.registrations.push({ email: normalizedEmail, date: now });
+      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(history));
+    }
+
+    // Save server-side only if this device/email pair is not already present.
     const supabase = getSupabaseClient();
-    await supabase.from('device_registrations').insert({
-      device_fingerprint: fingerprint,
-      email: email.toLowerCase(),
-      registered_at: now,
-      auth_method: authMethod,
-    }).then(() => {}).catch(() => {});
-  } catch { /* silent */ }
+    const { data: existing } = await supabase
+      .from('device_registrations')
+      .select('id')
+      .eq('device_fingerprint', fingerprint)
+      .eq('email', normalizedEmail)
+      .limit(1);
+
+    const alreadyBoundOnServer = Array.isArray(existing) && existing.length > 0;
+
+    if (!alreadyBoundOnServer) {
+      await supabase.from('device_registrations').insert({
+        device_fingerprint: fingerprint,
+        email: normalizedEmail,
+        user_id: userId ?? null,
+        registered_at: now,
+        auth_method: authMethod,
+      }).then(() => {}).catch(() => {});
+    }
+
+    return {
+      bound: true,
+      alreadyBound: alreadyBoundLocally || alreadyBoundOnServer,
+    };
+  } catch {
+    return { bound: false, alreadyBound: false };
+  }
+}
+
+/**
+ * Backward-compatible name used by registration code.
+ */
+export async function recordAccountCreation(
+  email: string,
+  authMethod: string = 'email',
+  userId?: string | null
+): Promise<void> {
+  await recordDeviceBinding(email, authMethod, userId);
+}
+
+/**
+ * Check the device rule and bind the device to this account if allowed.
+ */
+export async function ensureDeviceBoundToAccount(
+  email: string,
+  authMethod: string = 'email',
+  userId?: string | null
+): Promise<DeviceBindingResult> {
+  const allowedResult = await canLoginOnDevice(email);
+  if (!allowedResult.allowed) {
+    return allowedResult;
+  }
+
+  const binding = await recordDeviceBinding(email, authMethod, userId);
+  return {
+    allowed: true,
+    bound: binding.bound,
+    alreadyBound: binding.alreadyBound,
+  };
 }
 
 /**

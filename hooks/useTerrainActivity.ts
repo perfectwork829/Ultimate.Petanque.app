@@ -9,10 +9,11 @@
  *  - Priority 1: Terrains with an ongoing meetup/tournament RIGHT NOW
  *  - Priority 2: Terrains with habitual activity at the same day-of-week + hour window
  */
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useAppData } from '@/contexts/AppContext';
 import { useLanguage } from '@/hooks/useLanguage';
 import { getSupabaseClient } from '@/template';
+import { useFocusEffect } from '@react-navigation/native';
 
 export interface TerrainActivityInfo {
   score: number;
@@ -28,11 +29,195 @@ export interface TerrainActivityInfo {
   activeNowLabel: string;
   /** Score based on habitual activity at this day-of-week + hour */
   habitualScore: number;
+  /** True when historical/weekly activity matches the current day/hour. */
+  hasActivityToday?: boolean;
+  hasLiveMeetup?: boolean;
+  hasLiveTournament?: boolean;
+  hasLiveMatch?: boolean;
+  hasLiveChallenge?: boolean;
 }
 
 interface MeetupEntry {
   date: string;
   endTime: string | null;
+}
+
+function parseDateMs(value?: string | null): number | null {
+  if (!value) return null;
+  const d = new Date(value);
+  const ms = d.getTime();
+  return Number.isNaN(ms) ? null : ms;
+}
+
+function combineDateAndTimeMs(baseDate?: string | null, timeValue?: string | null): number | null {
+  if (!baseDate || !timeValue) return null;
+
+  const direct = parseDateMs(timeValue);
+  if (direct != null) return direct;
+
+  const match = String(timeValue).match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+  if (!match) return null;
+
+  const base = new Date(baseDate);
+  if (Number.isNaN(base.getTime())) return null;
+
+  base.setHours(Number(match[1]), Number(match[2]), Number(match[3] || 0), 0);
+  return base.getTime();
+}
+
+function getEndMs(startMs: number, baseDate?: string | null, endTime?: string | null, defaultHours = 3): number {
+  let endMs = combineDateAndTimeMs(baseDate, endTime);
+  if (endMs == null) endMs = startMs + defaultHours * 60 * 60 * 1000;
+  if (endMs <= startMs) endMs += 24 * 60 * 60 * 1000;
+  return endMs;
+}
+
+function isSameLocalDate(a: Date, b: Date): boolean {
+  return a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate();
+}
+
+function isTodayLike(dateValue: string | null | undefined, now: Date): boolean {
+  const ms = parseDateMs(dateValue);
+  if (ms == null) return false;
+  return isSameLocalDate(new Date(ms), now);
+}
+
+function parseHourValue(value: any): number | null {
+  if (value == null) return null;
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  const text = String(value);
+  const m = text.match(/(\d{1,2})(?::(\d{2}))?/);
+  if (!m) return null;
+  const hour = Number(m[1]);
+  if (!Number.isFinite(hour) || hour < 0 || hour > 23) return null;
+  return hour;
+}
+
+function normalizeDow(value: any): number | null {
+  if (value == null) return null;
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    // JavaScript: Sunday=0. Some stored schedules use Monday=1..Sunday=7.
+    if (value >= 0 && value <= 6) return value;
+    if (value === 7) return 0;
+  }
+  const text = String(value).trim().toLowerCase();
+  const names: Record<string, number> = {
+    sun: 0, sunday: 0, dimanche: 0, dim: 0,
+    mon: 1, monday: 1, lundi: 1, lun: 1,
+    tue: 2, tuesday: 2, mardi: 2, mar: 2,
+    wed: 3, wednesday: 3, mercredi: 3, mer: 3,
+    thu: 4, thursday: 4, jeudi: 4, jeu: 4,
+    fri: 5, friday: 5, vendredi: 5, ven: 5,
+    sat: 6, saturday: 6, samedi: 6, sam: 6,
+  };
+  if (text in names) return names[text];
+  const n = Number(text);
+  if (Number.isFinite(n)) {
+    if (n >= 0 && n <= 6) return n;
+    if (n === 7) return 0;
+  }
+  return null;
+}
+
+function hourInWindow(hour: number, start: number | null, end: number | null, tolerance = 1): boolean {
+  if (start == null && end == null) return false;
+  const s = start ?? end;
+  const e = end ?? start;
+  if (s == null || e == null) return false;
+
+  // Single hour value: allow small tolerance because user asked for around 10AM.
+  if (s === e) return Math.abs(s - hour) <= tolerance;
+
+  if (s <= e) return hour >= s - tolerance && hour <= e + tolerance;
+  // Overnight schedule.
+  return hour >= s - tolerance || hour <= e + tolerance;
+}
+
+function getTerrainWeeklyActivityEntries(terrain: any): any[] {
+  const raw =
+    terrain?.weeklyActivity ??
+    terrain?.weekly_activity ??
+    terrain?.peakHours ??
+    terrain?.peak_hours ??
+    terrain?.activitySchedule ??
+    terrain?.activity_schedule ??
+    terrain?.popularTimes ??
+    terrain?.popular_times ??
+    terrain?.habitualActivity ??
+    terrain?.habitual_activity ??
+    null;
+
+  if (!raw) return [];
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+      if (parsed && typeof parsed === 'object') return Object.entries(parsed).map(([day, value]) => ({ day, value }));
+    } catch {
+      return [];
+    }
+  }
+  if (typeof raw === 'object') {
+    return Object.entries(raw).map(([day, value]) => ({ day, value }));
+  }
+  return [];
+}
+
+function terrainWeeklyActivityMatchesNow(terrain: any, now: Date): boolean {
+  const currentDow = now.getDay();
+  const currentHour = now.getHours();
+  const currentMonth = now.getMonth() + 1;
+
+  return getTerrainWeeklyActivityEntries(terrain).some((entry: any) => {
+    const value = entry?.value;
+    const source = value && typeof value === 'object' && !Array.isArray(value) ? { ...entry, ...value } : entry;
+
+    const dow = normalizeDow(
+      source.dayOfWeek ??
+      source.day_of_week ??
+      source.weekday ??
+      source.weekDay ??
+      source.dow ??
+      source.day
+    );
+    if (dow == null || dow !== currentDow) return false;
+
+    const months = source.months ?? source.seasonMonths ?? source.season_months;
+    if (Array.isArray(months) && months.length > 0) {
+      const normalizedMonths = months.map((m: any) => Number(m)).filter((m: number) => Number.isFinite(m));
+      if (normalizedMonths.length > 0 && !normalizedMonths.includes(currentMonth)) return false;
+    }
+
+    const hours = source.hours ?? source.hourSlots ?? source.hour_slots;
+    if (Array.isArray(hours)) {
+      return hours.some((h: any) => hourInWindow(currentHour, parseHourValue(h), parseHourValue(h), 1));
+    }
+
+    const startHour = parseHourValue(source.startHour ?? source.start_hour ?? source.startTime ?? source.start_time ?? source.from);
+    const endHour = parseHourValue(source.endHour ?? source.end_hour ?? source.endTime ?? source.end_time ?? source.to);
+    const hour = parseHourValue(source.hour ?? source.time ?? source.label);
+
+    return hourInWindow(currentHour, startHour ?? hour, endHour ?? hour, 1);
+  });
+}
+
+function getChallengeTerrainId(challenge: any): string | null {
+  const terrainId =
+    challenge?.terrainId ??
+    challenge?.terrain_id ??
+    challenge?.courtId ??
+    challenge?.court_id ??
+    challenge?.terrain?.id ??
+    null;
+
+  return terrainId ? String(terrainId) : null;
+}
+
+function getChallengeDateValue(challenge: any): string | null {
+  return challenge?.date ?? challenge?.eventDate ?? challenge?.event_date ?? challenge?.createdAt ?? challenge?.created_at ?? null;
 }
 
 interface GlobalTerrainStats {
@@ -49,45 +234,47 @@ interface GlobalTerrainStats {
 }
 
 export function useTerrainActivity(): Map<string, TerrainActivityInfo> {
-  const { terrains, matches, tournaments } = useAppData();
+  const { terrains, matches, tournaments, challenges } = useAppData();
   const { language } = useLanguage();
 
-  // Meetups loaded from Supabase (loaded once) — now includes end_time
+  // Meetups loaded from Supabase — refreshed on mount and screen focus, so newly-created RDVs
+  // immediately affect the fire-button live court markers.
   const [terrainMeetupsMap, setTerrainMeetupsMap] = useState<Map<string, MeetupEntry[]>>(new Map());
-  const meetupLoadRef = useRef(false);
+
+  const loadMeetups = useCallback(async () => {
+    try {
+      const supabase = getSupabaseClient();
+      // Load meetups from the last 7 days forward (to catch ongoing ones)
+      const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      const { data, error } = await supabase
+        .from('terrain_meetups')
+        .select('terrain_id, date, end_time')
+        .eq('status', 'active')
+        .gte('date', weekAgo);
+      if (error) {
+        console.log('[useTerrainActivity] Error loading meetups:', error.message);
+        return;
+      }
+
+      const map = new Map<string, MeetupEntry[]>();
+      (data || []).forEach((r: any) => {
+        const arr = map.get(r.terrain_id) || [];
+        arr.push({ date: r.date, endTime: r.end_time || null });
+        map.set(r.terrain_id, arr);
+      });
+      setTerrainMeetupsMap(map);
+    } catch (e) {
+      console.log('[useTerrainActivity] Error loading meetups:', e);
+    }
+  }, []);
 
   useEffect(() => {
-    if (meetupLoadRef.current) return;
-    meetupLoadRef.current = true;
-    const loadMeetups = async () => {
-      try {
-        const supabase = getSupabaseClient();
-        // Load meetups from the last 7 days forward (to catch ongoing ones)
-        const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-        const { data, error } = await supabase
-          .from('terrain_meetups')
-          .select('terrain_id, date, end_time')
-          .eq('status', 'active')
-          .gte('date', weekAgo);
-        if (error) {
-          console.log('[useTerrainActivity] Error loading meetups:', error.message);
-          return;
-        }
-        if (data) {
-          const map = new Map<string, MeetupEntry[]>();
-          data.forEach((r: any) => {
-            const arr = map.get(r.terrain_id) || [];
-            arr.push({ date: r.date, endTime: r.end_time || null });
-            map.set(r.terrain_id, arr);
-          });
-          setTerrainMeetupsMap(map);
-        }
-      } catch (e) {
-        console.log('[useTerrainActivity] Error loading meetups:', e);
-      }
-    };
     loadMeetups();
-  }, []);
+  }, [loadMeetups]);
+
+  useFocusEffect(useCallback(() => {
+    loadMeetups();
+  }, [loadMeetups]));
 
   // Global terrain activity stats from ALL users (community-representative scoring)
   const [globalTerrainStats, setGlobalTerrainStats] = useState<Map<string, GlobalTerrainStats>>(new Map());
@@ -156,13 +343,13 @@ export function useTerrainActivity(): Map<string, TerrainActivityInfo> {
       // 1a. Ongoing meetups: start <= now <= end (or within 3h default window if no end_time)
       const terrainMeetups = terrainMeetupsMap.get(tr.id) || [];
       const ongoingMeetups = terrainMeetups.filter(mt => {
-        const start = new Date(mt.date).getTime();
-        const end = mt.endTime
-          ? new Date(mt.endTime).getTime()
-          : start + 3 * 60 * 60 * 1000; // Default 3h window
+        const start = parseDateMs(mt.date);
+        if (start == null) return false;
+        const end = getEndMs(start, mt.date, mt.endTime, 3);
         return nowMs >= start && nowMs <= end;
       });
-      if (ongoingMeetups.length > 0) {
+      const hasLiveMeetup = ongoingMeetups.length > 0;
+      if (hasLiveMeetup) {
         isActiveNow = true;
         activeNowReasons.push(
           ongoingMeetups.length === 1
@@ -171,12 +358,15 @@ export function useTerrainActivity(): Map<string, TerrainActivityInfo> {
         );
       }
 
-      // 1b. Ongoing tournaments: status "En cours" or starts today
-      const ongoingTournaments = tournaments.filter(t =>
-        t.terrainId === tr.id &&
-        (t.status === 'En cours' || (t.status === 'À venir' && t.date && t.date.slice(0, 10) === todayStr))
-      );
-      if (ongoingTournaments.length > 0) {
+      // 1b. Ongoing tournaments: in progress, or scheduled for today and not finished/cancelled.
+      const ongoingTournaments = tournaments.filter((t: any) => {
+        if (t.terrainId !== tr.id) return false;
+        if (t.status === 'Terminé' || t.status === 'completed' || t.status === 'cancelled') return false;
+        if (t.status === 'En cours') return true;
+        return isTodayLike(t.date, now);
+      });
+      const hasLiveTournament = ongoingTournaments.length > 0;
+      if (hasLiveTournament) {
         isActiveNow = true;
         activeNowReasons.push(
           ongoingTournaments.length === 1
@@ -188,15 +378,30 @@ export function useTerrainActivity(): Map<string, TerrainActivityInfo> {
       // 1c. Very recent match (within last 2 hours)
       const twoHoursAgo = nowMs - 2 * 60 * 60 * 1000;
       const veryRecentMatches = terrainMatches.filter(m => {
-        const matchTime = new Date(m.date).getTime();
-        return matchTime >= twoHoursAgo && matchTime <= nowMs;
+        const matchTime = parseDateMs(m.date);
+        return matchTime != null && matchTime >= twoHoursAgo && matchTime <= nowMs;
       });
-      if (veryRecentMatches.length > 0) {
+      const hasLiveMatch = veryRecentMatches.length > 0;
+      if (hasLiveMatch) {
         isActiveNow = true;
         activeNowReasons.push(
           veryRecentMatches.length === 1
             ? (fr ? 'Partie recente' : 'Recent game')
             : `${veryRecentMatches.length} ${fr ? 'parties recentes' : 'recent games'}`
+        );
+      }
+
+      // 1d. Challenges at this terrain today are considered live court activity.
+      const todayChallenges = (challenges || []).filter((c: any) =>
+        getChallengeTerrainId(c) === String(tr.id) && isTodayLike(getChallengeDateValue(c), now)
+      );
+      const hasLiveChallenge = todayChallenges.length > 0;
+      if (hasLiveChallenge) {
+        isActiveNow = true;
+        activeNowReasons.push(
+          todayChallenges.length === 1
+            ? (fr ? 'Defi aujourd\'hui' : 'Challenge today')
+            : `${todayChallenges.length} ${fr ? 'defis aujourd\'hui' : 'challenges today'}`
         );
       }
 
@@ -212,6 +417,20 @@ export function useTerrainActivity(): Map<string, TerrainActivityInfo> {
       let sameDayCount = 0;
       terrainMatches.forEach(m => {
         const d = new Date(m.date);
+        if (Number.isNaN(d.getTime())) return;
+        if (d.getDay() === currentDow) {
+          sameDayCount++;
+          const h = d.getHours();
+          if (Math.abs(h - currentHour) <= 2) sameDayHourCount++;
+        }
+      });
+
+      (challenges || []).forEach((c: any) => {
+        if (getChallengeTerrainId(c) !== String(tr.id)) return;
+        const challengeDate = getChallengeDateValue(c);
+        if (!challengeDate) return;
+        const d = new Date(challengeDate);
+        if (Number.isNaN(d.getTime())) return;
         if (d.getDay() === currentDow) {
           sameDayCount++;
           const h = d.getHours();
@@ -221,29 +440,30 @@ export function useTerrainActivity(): Map<string, TerrainActivityInfo> {
 
       // Global community stats for habitual patterns
       const gStats = globalTerrainStats.get(tr.id);
-      // Check if the global peak matches current day+hour
-      let globalPeakMatchesCurrent = false;
-      let globalPeakDowCount = 0;
-      if (gStats && gStats.peakDow === currentDow) {
-        globalPeakMatchesCurrent = true;
-        globalPeakDowCount = gStats.peakDowCount;
-        if (Math.abs(gStats.peakHour - currentHour) <= 2) {
-          globalPeakDowCount += gStats.peakHourCount;
-        }
-      }
+      const globalPeakSameDayAndHour = Boolean(
+        gStats &&
+        gStats.peakDow === currentDow &&
+        Math.abs(gStats.peakHour - currentHour) <= 1 &&
+        gStats.peakHourCount > 0
+      );
+      const weeklyActivityNow = terrainWeeklyActivityMatchesNow(tr, now);
 
-      // Habitual score: how likely is activity NOW based on historical patterns
+      // Green habitual pulse must mean activity normally happens for this exact
+      // day/hour window. Do not show green just because the terrain has general
+      // activity on another day, or because it is active in the overall ranking.
+      const hasActivityToday = Boolean(weeklyActivityNow || sameDayHourCount > 0 || globalPeakSameDayAndHour);
+
+      // Habitual score: how likely is activity NOW based on historical patterns.
+      // Day-only history contributes to ranking/labels but does not enable green pulse.
       const habitualScore =
-        sameDayHourCount * 15 +    // Personal matches at same day+hour (strong signal)
-        sameDayCount * 3 +          // Personal matches on same day
-        (globalPeakMatchesCurrent ? globalPeakDowCount * 5 : 0) + // Community peak matches current day
-        (gStats && gStats.peakDow === currentDow && Math.abs(gStats.peakHour - currentHour) <= 2
-          ? gStats.peakHourCount * 8 : 0); // Community peak matches current hour
+        (weeklyActivityNow ? 40 : 0) +
+        sameDayHourCount * 15 +
+        (globalPeakSameDayAndHour ? gStats!.peakHourCount * 8 : 0);
 
       // ========================================
       // 3) GENERAL SCORE (for overall ranking)
       // ========================================
-      const meetupsToday = terrainMeetups.filter(mt => mt.date.slice(0, 10) === todayStr);
+      const meetupsToday = terrainMeetups.filter(mt => isTodayLike(mt.date, now));
       const tournamentBonus = ongoingTournaments.length * 25;
       const meetupBonus = meetupsToday.length * 30;
 
@@ -271,6 +491,8 @@ export function useTerrainActivity(): Map<string, TerrainActivityInfo> {
           peakLabel = meetupsToday.length === 1
             ? (fr ? 'RDV prevu aujourd\'hui' : 'Meetup today')
             : `${meetupsToday.length} ${fr ? 'RDV aujourd\'hui' : 'meetups today'}`;
+        } else if (weeklyActivityNow) {
+          peakLabel = `${fr ? 'Activite habituelle' : 'Habitual activity'} ${dayNames[currentDow]} ~${currentHour}h`;
         } else if (habitualScore > 10 && sameDayHourCount > 0) {
           peakLabel = `${sameDayHourCount} ${fr ? 'partie(s) habituelles' : 'usual game(s)'} ${dayNames[currentDow]} ~${currentHour}h`;
         } else if (gStats && gStats.peakDowCount > 0 && gStats.peakHourCount > 0) {
@@ -303,6 +525,11 @@ export function useTerrainActivity(): Map<string, TerrainActivityInfo> {
           isActiveNow,
           activeNowLabel,
           habitualScore,
+          hasActivityToday,
+          hasLiveMeetup,
+          hasLiveTournament,
+          hasLiveMatch,
+          hasLiveChallenge,
         });
       }
     });
@@ -314,7 +541,7 @@ export function useTerrainActivity(): Map<string, TerrainActivityInfo> {
     });
 
     return scoreMap;
-  }, [terrains, matches, tournaments, terrainMeetupsMap, language, globalTerrainStats]);
+  }, [terrains, matches, tournaments, challenges, terrainMeetupsMap, language, globalTerrainStats]);
 
   return terrainActivityMap;
 }

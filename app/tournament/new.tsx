@@ -14,6 +14,7 @@ import {
   ActivityIndicator,
   Linking,
   Keyboard,
+  type ViewStyle,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -49,11 +50,11 @@ const LEVEL_ICONS: Record<string, string> = {
   'Jeunes (Cadets)': 'school', 'Jeunes (Juniors)': 'sports',
 };
 
-function SectionCard({ children, title, subtitle, icon, color, delay = 0, required = false }: {
-  children: React.ReactNode; title: string; subtitle?: string; icon: string; color: string; delay?: number; required?: boolean;
+function SectionCard({ children, title, subtitle, icon, color, delay = 0, required = false, style }: {
+  children: React.ReactNode; title: string; subtitle?: string; icon: string; color: string; delay?: number; required?: boolean; style?: ViewStyle | ViewStyle[];
 }) {
   return (
-    <Animated.View entering={FadeInDown.duration(350).delay(delay)} style={styles.sectionCard}>
+    <Animated.View entering={FadeInDown.duration(350).delay(delay)} style={[styles.sectionCard, style]}>
       <View style={styles.sectionCardHeader}>
         <View style={[styles.sectionCardIcon, { backgroundColor: color + '15' }]}>
           <MaterialIcons name={icon as any} size={18} color={color} />
@@ -71,8 +72,8 @@ function SectionCard({ children, title, subtitle, icon, color, delay = 0, requir
   );
 }
 
-function AccordionCard({ children }: { children: React.ReactNode }) {
-  return <View style={styles.sectionCard}>{children}</View>;
+function AccordionCard({ children, style }: { children: React.ReactNode; style?: ViewStyle | ViewStyle[] }) {
+  return <View style={[styles.sectionCard, style]}>{children}</View>;
 }
 
 function StepIndicator({ step, total, label }: { step: number; total: number; label: string }) {
@@ -115,6 +116,7 @@ export default function NewTournamentScreen() {
   const [tournamentCategory, setTournamentCategory] = useState<TournamentCategory | undefined>();
   const [registrationType, setRegistrationType] = useState<RegistrationType | undefined>();
   const [tournamentScope, setTournamentScope] = useState<TournamentScope | undefined>();
+  const [isSaving, setIsSaving] = useState(false);
 
   // Modal states
   const [showTerrainPicker, setShowTerrainPicker] = useState(false);
@@ -156,16 +158,16 @@ export default function NewTournamentScreen() {
     let filled = 0; const total = 4;
     if (name.trim()) filled++;
     filled++; // date always filled
-    if (terrainId || manualLocation.city.trim()) filled++;
+    if (terrainId || hasManualLocation) filled++;
     filled++; // format always filled
     return { filled, total };
-  }, [name, terrainId, manualLocation.city]);
+  }, [name, terrainId, hasManualLocation]);
 
   const progressLabel = useMemo(() => {
     if (!name.trim()) return t('tournament', 'startWithName');
-    if (!terrainId && !manualLocation.city.trim()) return t('tournament', 'chooseLocation');
+    if (!terrainId && !hasManualLocation) return t('tournament', 'chooseLocation');
     return t('tournament', 'readyToCreate');
-  }, [name, terrainId, manualLocation.city, t]);
+  }, [name, terrainId, hasManualLocation, t]);
 
   const CADRAGE_CONFIG = useMemo(() => ({
     'Poules': { icon: 'grid-view', description: t('cadrage', 'poulesDesc'), matches: t('cadrage', 'poulesMatches'), points: t('cadrage', 'poulesPoints'), specifics: [t('cadrage', 'poulesSpec1'), t('cadrage', 'poulesSpec2'), t('cadrage', 'poulesSpec3')] },
@@ -177,7 +179,20 @@ export default function NewTournamentScreen() {
     'Autre': { icon: 'tune', description: t('cadrage', 'autreDesc'), matches: t('cadrage', 'autreMatches'), points: t('cadrage', 'autrePoints'), specifics: [t('cadrage', 'autreSpec1'), t('cadrage', 'autreSpec2')] },
   } as Record<TournamentType, { icon: string; description: string; matches: string; points: string; specifics: string[] }>), [t]);
 
-  const canSave = name.trim() && (terrainId || manualLocation.city.trim());
+  const safeText = (value: unknown): string => (typeof value === 'string' ? value.trim() : '');
+  const safeNumber = (value: unknown, fallback = 0): number => {
+    const n = typeof value === 'number' ? value : typeof value === 'string' ? parseFloat(value.replace(',', '.')) : NaN;
+    return Number.isFinite(n) ? n : fallback;
+  };
+
+  const hasManualLocation = Boolean(
+    safeText(manualLocation.city) ||
+    safeText(manualLocation.address) ||
+    safeText(manualLocation.formattedAddress) ||
+    (safeNumber(manualLocation.latitude) !== 0 && safeNumber(manualLocation.longitude) !== 0)
+  );
+
+  const canSave = Boolean(name.trim() && (terrainId || hasManualLocation)) && !isSaving;
 
   const uploadPosterFile = useCallback(async (fileUri: string, fileName: string, mimeType: string) => {
     if (!user) {
@@ -286,35 +301,89 @@ export default function NewTournamentScreen() {
   };
 
   const handleSave = async () => {
-    if (!name.trim()) { Alert.alert(t('common', 'error'), t('tournament', 'errorNameRequired')); return; }
-    if (!terrainId && !manualLocation.city.trim()) { Alert.alert(t('common', 'error'), t('tournament', 'errorLocationRequired')); return; }
+    if (isSaving) return;
+
+    const cleanName = safeText(name);
     const selectedClub = clubs.find(c => c.id === clubId);
     const terrain = terrains.find(t => t.id === terrainId);
+
+    const manualAddress = safeText(manualLocation.address) || safeText(manualLocation.formattedAddress);
+    const manualCity = safeText(manualLocation.city) || manualAddress;
+    const manualCountry = safeText(manualLocation.country) || 'France';
+    const manualLat = safeNumber(manualLocation.latitude, 0);
+    const manualLng = safeNumber(manualLocation.longitude, 0);
+
+    const terrainLat = safeNumber(terrain?.location?.latitude, 0);
+    const terrainLng = safeNumber(terrain?.location?.longitude, 0);
+
+    const locationName = safeText(terrain?.name) || manualAddress || manualCity;
+    const locationCity = safeText(terrain?.city) || manualCity;
+    const locationLat = terrain ? terrainLat : manualLat;
+    const locationLng = terrain ? terrainLng : manualLng;
+
+    if (!cleanName) {
+      Alert.alert(t('common', 'error'), t('tournament', 'errorNameRequired'));
+      return;
+    }
+
+    if (!terrain && !hasManualLocation) {
+      Alert.alert(t('common', 'error'), t('tournament', 'errorLocationRequired'));
+      return;
+    }
+
+    setIsSaving(true);
     try {
-      const { error } = await addTournament({
-        name: name.trim(), date: date.toISOString(), type, format,
+      const tournamentPayload = {
+        name: cleanName,
+        date: date.toISOString(),
+        type,
+        format,
         location: {
-          name: terrain?.name || manualLocation.address.trim() || manualLocation.city.trim(),
-          city: terrain?.city || manualLocation.city.trim(),
-          latitude: terrain?.location?.latitude ?? manualLocation.latitude,
-          longitude: terrain?.location?.longitude ?? manualLocation.longitude,
+          name: locationName || cleanName,
+          city: locationCity || manualCountry,
+          country: manualCountry,
+          address: manualAddress || undefined,
+          formattedAddress: safeText(manualLocation.formattedAddress) || undefined,
+          latitude: locationLat,
+          longitude: locationLng,
+          lat: locationLat,
+          lng: locationLng,
         },
-        terrainId: terrain?.id, terrainName: terrain?.name, terrainType: terrain?.type,
-        clubId, clubName: selectedClub?.name, status: getStatusFromDate(date, endDate),
-        endDate: endDate ? endDate.toISOString() : undefined, participants: 0, maxParticipants: parseInt(maxParticipants) || 32,
-        prize: prize.trim() || undefined, description: description.trim() || undefined,
-        tournamentLevel, tournamentCategory, registrationType, tournamentScope,
-        registrationCost: registrationCost ? parseFloat(registrationCost) : undefined,
+        terrainId: terrain?.id,
+        terrainName: terrain?.name,
+        terrainType: terrain?.type,
+        clubId: selectedClub?.id,
+        clubName: selectedClub?.name,
+        status: getStatusFromDate(date, endDate),
+        endDate: endDate ? endDate.toISOString() : undefined,
+        participants: 0,
+        maxParticipants: parseInt(maxParticipants, 10) || 32,
+        prize: safeText(prize) || undefined,
+        description: safeText(description) || undefined,
+        tournamentLevel: tournamentLevel || undefined,
+        tournamentCategory: tournamentCategory || undefined,
+        registrationType: registrationType || undefined,
+        tournamentScope: tournamentScope || undefined,
+        registrationCost: safeText(registrationCost) ? safeNumber(registrationCost, 0) : undefined,
         posterUrl: posterUrl ?? undefined,
-      });
+      };
+
+      const { error } = await addTournament(tournamentPayload as any);
       if (error) {
         Alert.alert(t('common', 'error'), error);
         return;
       }
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      router.back();
+
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      setTimeout(() => {
+        if (router.canGoBack()) router.back();
+        else router.replace('/(tabs)/directory' as any);
+      }, 80);
     } catch (e: any) {
+      console.log('[NewTournament] create failed:', e);
       Alert.alert(t('common', 'error'), e?.message || String(e));
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -330,7 +399,7 @@ export default function NewTournamentScreen() {
           onPress={handleSave}
           disabled={!canSave}
         >
-          <Text style={styles.headerSaveBtnText}>{t('common', 'save')}</Text>
+          {isSaving ? <ActivityIndicator size="small" color="#FFF" /> : <Text style={styles.headerSaveBtnText}>{t('common', 'save')}</Text>}
         </Pressable>
       </View>
 
@@ -381,7 +450,7 @@ export default function NewTournamentScreen() {
           </SectionCard>
 
           {/* 3. Lieu (Modal Picker) */}
-          <SectionCard title={t('tournament', 'location')} icon="place" color={theme.success} delay={150} required>
+          <SectionCard title={t('tournament', 'location')} icon="place" color={theme.success} delay={150} required style={styles.locationSectionCard}>
             <Pressable style={styles.pickerButton} onPress={() => { setTerrainSearch(''); setShowTerrainPicker(true); }}>
               {selectedTerrainObj ? (
                 <View style={styles.pickerSelected}>
@@ -403,14 +472,14 @@ export default function NewTournamentScreen() {
               )}
             </Pressable>
             {!terrainId ? (
-              <Animated.View entering={FadeInDown.duration(250)} style={{ marginTop: 14 }}>
+              <Animated.View entering={FadeInDown.duration(250)} style={styles.locationPickerWrapper}>
                 <LocationPicker label={t('tournament', 'tournamentLocation')} value={manualLocation} onChange={setManualLocation} placeholder={t('tournament', 'searchAddress')} required showAddressField />
               </Animated.View>
             ) : null}
           </SectionCard>
 
           {/* 4. Format */}
-          <SectionCard title={t('tournament', 'gameFormat')} icon="groups" color={theme.accent} delay={175} required>
+          <SectionCard title={t('tournament', 'gameFormat')} icon="groups" color={theme.accent} delay={175} required style={styles.gameFormatSectionCard}>
             <View style={styles.formatGrid}>
               {config.game.formats.map(f => {
                 const cfg = FORMAT_CONFIG_KEYS[f]; const isActive = format === f;
@@ -427,7 +496,7 @@ export default function NewTournamentScreen() {
           </SectionCard>
 
           {/* 5. Cadrage (Modal Picker) */}
-          <SectionCard title={t('tournament', 'cadrage')} subtitle={t('tournament', 'competitionType')} icon="account-tree" color={theme.tirColor} delay={200}>
+          <SectionCard title={t('tournament', 'cadrage')} subtitle={t('tournament', 'competitionType')} icon="account-tree" color={theme.tirColor} delay={200} style={styles.cadrageSectionCard}>
             <Pressable style={styles.pickerButton} onPress={() => setShowCadragePicker(true)}>
               <View style={styles.pickerSelected}>
                 <MaterialIcons name={(CADRAGE_ICONS[type] || 'tune') as any} size={20} color={theme.tirColor} />
@@ -452,8 +521,7 @@ export default function NewTournamentScreen() {
             ) : null}
           </SectionCard>
 
-          {/* 6. Club organisateur — single tappable row (avoids overlap with accordions below) */}
-          <AccordionCard>
+          <AccordionCard style={styles.organizerClubSectionCard}>
             <Pressable
               style={styles.accordionHeader}
               onPress={() => {
@@ -885,12 +953,54 @@ const styles = StyleSheet.create({
   scrollView: { flex: 1 },
   scrollContent: { paddingHorizontal: 16, paddingTop: 16 },
 
-  sectionCard: { backgroundColor: theme.surface, borderRadius: theme.borderRadius.lg, padding: 16, marginBottom: 14, ...theme.shadows.card },
+  sectionCard: { backgroundColor: theme.surface, borderRadius: theme.borderRadius.lg, padding: 16, marginBottom: 14, position: 'relative', overflow: 'visible', ...theme.shadows.card },
   sectionCardHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 14 },
   sectionCardIcon: { width: 32, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
   sectionCardTitle: { fontSize: 14, fontWeight: '700', color: theme.textPrimary },
   sectionCardSubtitle: { fontSize: 11, color: theme.textMuted, marginTop: 1 },
   requiredDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: theme.error },
+
+  // Keep the Location, Game Format, Tournament System, and Organizing Club
+  // cards in the normal vertical flow. Android can draw lower cards over upper
+  // cards when animated siblings share the same elevation/zIndex, especially
+  // after the manual LocationPicker expands. Use a descending stack order so
+  // the Tournament System card is never visually cut by Organizing Club.
+  locationSectionCard: {
+    position: 'relative',
+    zIndex: 40,
+    elevation: 4,
+    overflow: 'visible',
+    marginBottom: 14,
+  },
+  locationPickerWrapper: {
+    marginTop: 14,
+    marginBottom: 18,
+    position: 'relative',
+    zIndex: 50,
+    elevation: 5,
+    overflow: 'visible',
+  },
+  gameFormatSectionCard: {
+    position: 'relative',
+    zIndex: 30,
+    elevation: 3,
+    overflow: 'visible',
+    marginBottom: 14,
+  },
+  cadrageSectionCard: {
+    position: 'relative',
+    zIndex: 20,
+    elevation: 2,
+    overflow: 'visible',
+    marginBottom: 14,
+  },
+  organizerClubSectionCard: {
+    position: 'relative',
+    zIndex: 10,
+    elevation: 1,
+    overflow: 'visible',
+    marginTop: 0,
+  },
 
   textInput: { backgroundColor: theme.backgroundSecondary, paddingHorizontal: 14, paddingVertical: 13, borderRadius: theme.borderRadius.md, fontSize: 15, color: theme.textPrimary, borderWidth: 1, borderColor: theme.border },
   textArea: { minHeight: 90, paddingTop: 13 },

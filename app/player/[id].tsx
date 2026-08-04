@@ -1503,9 +1503,11 @@ const s = StyleSheet.create({
   scrollView: { flex: 1 },
   scrollContent: { paddingHorizontal: 16, paddingTop: 20 },
   scrollContentTablet: { maxWidth: 960, alignSelf: 'center' as const, width: '100%', paddingHorizontal: 24 },
-  tabletRow: { flexDirection: 'row' as const, gap: 16, marginBottom: 4 },
-  tabletLeft: { flex: 1 },
-  tabletRight: { flex: 1 },
+  // Keep the profile header in the same full-width flow as the Matches and Performances cards.
+  // The previous tablet split made the profile card only half width on wider Android devices/emulators.
+  tabletRow: { marginBottom: 4 },
+  tabletLeft: { width: '100%' as const },
+  tabletRight: { width: '100%' as const },
   heroCard: { backgroundColor: theme.surface, borderRadius: theme.borderRadius.xl, padding: 24, alignItems: 'center', marginBottom: 16, ...theme.shadows.card },
   avatarContainer: { position: 'relative', marginBottom: 14 },
   avatar: { width: 100, height: 100, borderRadius: 50, backgroundColor: theme.primary, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },

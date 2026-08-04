@@ -3,9 +3,40 @@
 // INTERNATIONALIZATION - FR / EN
 // ============================================
 
+// Topic-specific translation files are merged below.
+// Keep this root file as the public entrypoint because imports like
+// '@/constants/i18n' resolve to constants/i18n.ts before constants/i18n/index.ts.
+import { commonTranslations } from './i18n/common';
+import { homeTranslations } from './i18n/home';
+import { profileTranslations } from './i18n/profile';
+import { statsTranslations } from './i18n/stats';
+import { directoryTranslations } from './i18n/directory';
+import { matchTranslations } from './i18n/match';
+import { challengeTranslations } from './i18n/challenge';
+import { historyTranslations } from './i18n/history';
+import { tournamentTranslations } from './i18n/tournament';
+import { playerTranslations } from './i18n/player';
+import { clubTranslations } from './i18n/club';
+import { terrainTranslations } from './i18n/terrain';
+import { equipmentTranslations } from './i18n/equipment';
+import { palmaresTranslations } from './i18n/palmares';
+import { financialTranslations } from './i18n/financial';
+import { mapTranslations } from './i18n/map';
+import { shareTranslations } from './i18n/share';
+import { meetupTranslations } from './i18n/meetup';
+import { leaderboardTranslations } from './i18n/leaderboard';
+import { notificationsTranslations } from './i18n/notifications';
+import { passwordTranslations } from './i18n/password';
+import { syncTranslations } from './i18n/sync';
+import { legalTranslations } from './i18n/legal';
+import { tournamentEnumsTranslations } from './i18n/tournamentEnums';
+import { trustAndReportsTranslations } from './i18n/trustAndReports';
+import { gameAndUITranslations } from './i18n/gameAndUI';
+
+
 export type Language = 'fr' | 'en';
 
-export const translations = {
+const baseTranslations = {
   // ============================================
   // COMMON
   // ============================================
@@ -3441,6 +3472,62 @@ export const translations = {
     leaderboardContent: { fr: 'Classement des joueurs publics avec 3+ matchs multi-joueurs. Comparaison de clubs et classement par ville utilisent les donnees publiques. Score de completude calcule localement.', en: 'Leaderboard of public players with 3+ multi-player matches. Club comparison and city rankings use public data only. Completeness score calculated locally.' },
   },
 };
+
+
+function isPlainObject(value: unknown): value is Record<string, any> {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function deepMergeTranslations<T extends Record<string, any>>(...sources: T[]): T {
+  const output: Record<string, any> = {};
+
+  sources.forEach((source) => {
+    Object.entries(source || {}).forEach(([key, value]) => {
+      if (isPlainObject(value) && isPlainObject(output[key])) {
+        output[key] = deepMergeTranslations(output[key], value);
+      } else if (isPlainObject(value)) {
+        output[key] = deepMergeTranslations(value);
+      } else {
+        output[key] = value;
+      }
+    });
+  });
+
+  return output as T;
+}
+
+// Topic files must be merged deeply because many files share the same namespace
+// such as login, consent, terms, privacy, map, etc. A shallow spread would replace
+// whole namespaces and make valid keys return raw key names.
+export const translations = deepMergeTranslations(
+  baseTranslations,
+  commonTranslations,
+  homeTranslations,
+  profileTranslations,
+  statsTranslations,
+  directoryTranslations,
+  matchTranslations,
+  challengeTranslations,
+  historyTranslations,
+  tournamentTranslations,
+  playerTranslations,
+  clubTranslations,
+  terrainTranslations,
+  equipmentTranslations,
+  palmaresTranslations,
+  financialTranslations,
+  mapTranslations,
+  shareTranslations,
+  meetupTranslations,
+  leaderboardTranslations,
+  notificationsTranslations,
+  passwordTranslations,
+  syncTranslations,
+  legalTranslations,
+  tournamentEnumsTranslations,
+  trustAndReportsTranslations,
+  gameAndUITranslations,
+) as typeof baseTranslations;
 
 // ============================================
 // TRANSLATION HELPER FUNCTION

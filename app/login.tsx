@@ -9,12 +9,14 @@ import {
   Platform,
   ScrollView,
   ActivityIndicator,
+  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import Animated, { FadeInDown, FadeIn } from 'react-native-reanimated';
 import { router } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth, useAlert } from '@/template';
 import {
   GOOGLE_PROVIDER_NOT_ENABLED,
@@ -30,14 +32,161 @@ import {
 } from '@/constants/authOtp';
 import { useLanguage } from '@/hooks/useLanguage';
 import { isDisposableEmail } from '@/services/emailValidationService';
-import { canCreateAccount, canLoginOnDevice, recordAccountCreation } from '@/services/deviceFingerprintService';
+import { canCreateAccount, canLoginOnDevice, ensureDeviceBoundToAccount } from '@/services/deviceFingerprintService';
 import { clearTempDataExpiry } from '@/services/retentionNotificationService';
 import { trackReferral } from '@/services/ambassadorService';
 import { mapAuthLoginErrorMessage } from '@/utils/mapAuthLoginError';
 
+const PENDING_DEVICE_BINDING_ALERT_KEY = '@pending_device_binding_alert';
+
 type AuthMode = 'login' | 'register';
 type RegisterStep = 'email' | 'otp';
 type ResetStep = 'email' | 'otp' | 'done';
+
+type PolicyType = 'terms' | 'privacy';
+
+const POLICY_COPY: Record<PolicyType, { fr: { title: string; content: string }; en: { title: string; content: string } }> = {
+  terms: {
+    fr: {
+      title: 'Conditions Generales d’Utilisation',
+      content: `Conditions Generales d’Utilisation
+
+Bienvenue sur Ultimate Petanque.
+
+En utilisant cette application, vous acceptez de respecter les presentes conditions d’utilisation.
+
+1. Utilisation de l’application
+Ultimate Petanque permet aux utilisateurs de creer un compte, gerer un profil, rechercher des terrains, clubs, joueurs, tournois, rencontres et autres activites liees a la petanque.
+
+Vous vous engagez a utiliser l’application de maniere correcte, respectueuse et conforme a la loi.
+
+2. Compte utilisateur
+Vous etes responsable des informations fournies lors de la creation de votre compte et de la confidentialite de vos identifiants.
+
+Vous acceptez de ne pas creer de faux comptes, usurper l’identite d’une autre personne ou utiliser l’application d’une maniere abusive.
+
+3. Contenu publie
+Vous etes responsable des photos, textes, descriptions, lieux, evenements et autres contenus que vous ajoutez dans l’application.
+
+Ultimate Petanque peut supprimer ou limiter l’acces a tout contenu faux, abusif, illegal, offensant, trompeur ou contraire aux regles de la communaute.
+
+4. Localisation et donnees publiques
+Certaines fonctionnalites utilisent la localisation pour afficher des terrains, clubs, joueurs ou evenements a proximite.
+
+Lorsque vous rendez un element public, il peut etre visible par d’autres utilisateurs de l’application.
+
+5. Limitation de responsabilite
+Ultimate Petanque fait son possible pour fournir un service fiable, mais ne garantit pas l’absence d’erreurs, d’interruptions ou d’informations inexactes.
+
+6. Modification des conditions
+Ces conditions peuvent etre mises a jour afin d’ameliorer le service ou respecter les obligations legales.
+
+En continuant a utiliser l’application, vous acceptez les conditions mises a jour.`,
+    },
+    en: {
+      title: 'Terms of Use',
+      content: `Terms of Use
+
+Welcome to Ultimate Petanque.
+
+By using this application, you agree to follow these terms of use.
+
+1. Use of the app
+Ultimate Petanque allows users to create an account, manage a profile, search for courts, clubs, players, tournaments, meetups and other petanque-related activities.
+
+You agree to use the application correctly, respectfully and in compliance with the law.
+
+2. User account
+You are responsible for the information you provide when creating your account and for keeping your login details secure.
+
+You agree not to create fake accounts, impersonate another person, or use the app abusively.
+
+3. Published content
+You are responsible for photos, texts, descriptions, locations, events and other content that you add to the application.
+
+Ultimate Petanque may remove or restrict access to content that is false, abusive, illegal, offensive, misleading or against community rules.
+
+4. Location and public data
+Some features use location to show nearby courts, clubs, players or events.
+
+When you make an item public, it may be visible to other users of the application.
+
+5. Limitation of liability
+Ultimate Petanque tries to provide a reliable service, but does not guarantee that the app will always be free from errors, interruptions or inaccurate information.
+
+6. Changes to terms
+These terms may be updated to improve the service or comply with legal requirements.
+
+By continuing to use the app, you accept the updated terms.`,
+    },
+  },
+  privacy: {
+    fr: {
+      title: 'Politique de Confidentialite',
+      content: `Politique de Confidentialite
+
+Ultimate Petanque respecte votre vie privee.
+
+1. Donnees collectees
+Nous pouvons collecter les informations necessaires au fonctionnement de l’application, notamment votre email, profil, pseudo, photos ajoutees volontairement, localisation approximative, terrains, clubs, tournois, rencontres et activites liees a votre compte.
+
+2. Utilisation des donnees
+Ces donnees sont utilisees pour creer et securiser votre compte, afficher les fonctionnalites de l’application, ameliorer l’experience utilisateur, gerer les cartes, terrains, evenements, invitations et interactions entre utilisateurs.
+
+3. Localisation
+La localisation peut etre utilisee pour afficher les terrains, clubs, joueurs ou evenements a proximite. Vous pouvez gerer les autorisations de localisation depuis les reglages de votre appareil.
+
+4. Photos et contenu
+Les photos que vous ajoutez volontairement peuvent etre affichees dans l’application, notamment sur les profils, terrains, clubs, tournois ou marqueurs de carte.
+
+5. Partage des donnees
+Nous ne vendons pas vos donnees personnelles.
+
+Certaines donnees peuvent etre visibles par d’autres utilisateurs lorsque vous rendez un profil, terrain, club, tournoi ou autre element public.
+
+6. Securite
+Nous mettons en place des mesures raisonnables pour proteger vos donnees et limiter les acces non autorises.
+
+7. Suppression ou modification
+Vous pouvez demander la modification ou suppression de vos donnees conformement aux regles applicables.
+
+8. Contact
+Pour toute question relative a vos donnees personnelles, vous pouvez contacter l’equipe Ultimate Petanque via les moyens de contact disponibles dans l’application ou sur le site officiel.`,
+    },
+    en: {
+      title: 'Privacy Policy',
+      content: `Privacy Policy
+
+Ultimate Petanque respects your privacy.
+
+1. Data collected
+We may collect information needed for the app to work, including your email, profile, nickname, voluntarily uploaded photos, approximate location, courts, clubs, tournaments, meetups and activities linked to your account.
+
+2. How data is used
+This data is used to create and secure your account, show app features, improve the user experience, manage maps, courts, events, invitations and interactions between users.
+
+3. Location
+Location may be used to show nearby courts, clubs, players or events. You can manage location permissions from your device settings.
+
+4. Photos and content
+Photos you voluntarily add may be displayed inside the app, including on profiles, courts, clubs, tournaments or map markers.
+
+5. Data sharing
+We do not sell your personal data.
+
+Some data may be visible to other users when you make a profile, court, club, tournament or other item public.
+
+6. Security
+We use reasonable measures to protect your data and limit unauthorized access.
+
+7. Deletion or modification
+You may request modification or deletion of your data in accordance with applicable rules.
+
+8. Contact
+For questions about your personal data, you can contact the Ultimate Petanque team through the contact options available in the app or on the official website.`,
+    },
+  },
+};
 
 export default function LoginScreen() {
   const { sendOTP, verifyOTPAndLogin, signInWithPassword, signInWithGoogle, operationLoading } = useAuth();
@@ -60,6 +209,10 @@ export default function LoginScreen() {
   const [resetOtp, setResetOtp] = useState('');
   const [resetNewPassword, setResetNewPassword] = useState('');
   const [resetConfirmPassword, setResetConfirmPassword] = useState('');
+  const [showPolicyModal, setShowPolicyModal] = useState(false);
+  const [policyTitle, setPolicyTitle] = useState('');
+  const [policyContent, setPolicyContent] = useState('');
+
 
   const resetForm = () => {
     setEmail('');
@@ -81,6 +234,13 @@ export default function LoginScreen() {
   const handleModeSwitch = (newMode: AuthMode) => {
     setMode(newMode);
     resetForm();
+  };
+
+  const openPolicy = (type: PolicyType) => {
+    const copy = POLICY_COPY[type][language === 'fr' ? 'fr' : 'en'];
+    setPolicyTitle(copy.title);
+    setPolicyContent(copy.content);
+    setShowPolicyModal(true);
   };
 
   const handleGoogleLogin = async () => {
@@ -131,6 +291,16 @@ export default function LoginScreen() {
       return;
     }
 
+    const binding = await ensureDeviceBoundToAccount(emailNormalized, 'password', user.id);
+    if (!binding.allowed && binding.reason === 'device_bound_to_other_account') {
+      showAlert(t('common', 'error'), t('login', 'deviceBoundToOther'));
+      return;
+    }
+
+    // Auth state may redirect away from this screen immediately after sign-in.
+    // Store a pending alert so app/index.tsx blocks the home redirect and shows
+    // the security message there until the user taps OK.
+    await AsyncStorage.setItem(PENDING_DEVICE_BINDING_ALERT_KEY, user.id);
     router.replace('/');
   };
 
@@ -164,8 +334,9 @@ export default function LoginScreen() {
       showAlert(t('common', 'error'), t('login', 'passwordMismatch'));
       return;
     }
-    const { error } = await verifyOTPAndLogin(
-      resetEmail.trim().toLowerCase(),
+    const resetEmailNormalized = resetEmail.trim().toLowerCase();
+    const { error, user: resetUser } = await verifyOTPAndLogin(
+      resetEmailNormalized,
       normalizeEmailOtpInput(resetOtp),
       { password: resetNewPassword }
     );
@@ -173,10 +344,14 @@ export default function LoginScreen() {
       showAlert(t('common', 'error'), error);
       return;
     }
-    showAlert(
-      language === 'fr' ? 'Mot de passe reinitialise' : 'Password reset',
-      language === 'fr' ? 'Votre mot de passe a ete mis a jour.' : 'Your password has been updated.'
-    );
+
+    const binding = await ensureDeviceBoundToAccount(resetEmailNormalized, 'password-reset', resetUser?.id);
+    if (!binding.allowed && binding.reason === 'device_bound_to_other_account') {
+      showAlert(t('common', 'error'), t('login', 'deviceBoundToOther'));
+      return;
+    }
+
+    await AsyncStorage.setItem(PENDING_DEVICE_BINDING_ALERT_KEY, resetUser?.id || resetEmailNormalized);
     router.replace('/');
   };
 
@@ -242,8 +417,13 @@ export default function LoginScreen() {
     if (error) {
       showAlert(t('common', 'error'), error);
     } else {
-      // Record successful account creation for device fingerprint tracking
-      recordAccountCreation(email.trim(), 'email').catch(() => {});
+      const emailNormalized = email.trim().toLowerCase();
+      const binding = await ensureDeviceBoundToAccount(emailNormalized, 'email', newUser?.id);
+      if (!binding.allowed && binding.reason === 'device_bound_to_other_account') {
+        showAlert(t('common', 'error'), t('login', 'deviceBoundToOther'));
+        return;
+      }
+
       // Clear 7-day temp data expiry since user is now registered
       clearTempDataExpiry().catch(() => {});
       // Track referral if code was provided
@@ -255,7 +435,8 @@ export default function LoginScreen() {
           );
         }).catch(() => {});
       }
-      // Navigate to index so AuthRouter/ProfileChecker can handle routing
+
+      await AsyncStorage.setItem(PENDING_DEVICE_BINDING_ALERT_KEY, newUser?.id || emailNormalized);
       router.replace('/');
     }
   };
@@ -647,23 +828,55 @@ export default function LoginScreen() {
 
           {/* Footer */}
           <Animated.View entering={FadeInDown.duration(500).delay(300)} style={styles.footer}>
-            <Pressable onPress={() => router.push('/terms')}>
+            <Pressable onPress={() => openPolicy('terms')} hitSlop={8}>
               <Text style={styles.footerText}>
                 {t('login', 'termsText')}
               </Text>
             </Pressable>
             <View style={styles.footerLinks}>
-              <Pressable onPress={() => router.push('/terms')}>
+              <Pressable onPress={() => openPolicy('terms')} hitSlop={8}>
                 <Text style={styles.footerLink}>{t('terms', 'title')}</Text>
               </Pressable>
               <Text style={styles.footerSeparator}>•</Text>
-              <Pressable onPress={() => router.push('/privacy-policy')}>
+              <Pressable onPress={() => openPolicy('privacy')} hitSlop={8}>
                 <Text style={styles.footerLink}>{t('privacy', 'title')}</Text>
               </Pressable>
             </View>
           </Animated.View>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      <Modal
+        visible={showPolicyModal}
+        transparent
+        animationType="slide"
+        presentationStyle="overFullScreen"
+        statusBarTranslucent={Platform.OS === 'android'}
+        onRequestClose={() => setShowPolicyModal(false)}
+      >
+        <View style={styles.policyModalOverlay}>
+          <View style={styles.policyModalSheet}>
+            <View style={styles.policyModalHeader}>
+              <Text style={styles.policyModalTitle}>{policyTitle}</Text>
+              <Pressable
+                onPress={() => setShowPolicyModal(false)}
+                style={styles.policyModalClose}
+                hitSlop={10}
+              >
+                <MaterialIcons name="close" size={24} color={theme.textPrimary} />
+              </Pressable>
+            </View>
+
+            <ScrollView
+              style={styles.policyModalScroll}
+              contentContainerStyle={styles.policyModalContent}
+              showsVerticalScrollIndicator
+            >
+              <Text style={styles.policyModalText}>{policyContent}</Text>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -896,5 +1109,51 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: theme.textPrimary,
+  },
+  policyModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'flex-end',
+  },
+  policyModalSheet: {
+    backgroundColor: theme.surface,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    maxHeight: '82%',
+    paddingTop: 18,
+    paddingHorizontal: 20,
+    paddingBottom: Platform.OS === 'ios' ? 34 : 22,
+  },
+  policyModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  policyModalTitle: {
+    flex: 1,
+    fontSize: 18,
+    fontWeight: '800',
+    color: theme.textPrimary,
+    paddingRight: 12,
+  },
+  policyModalClose: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: theme.backgroundSecondary,
+  },
+  policyModalScroll: {
+    maxHeight: '100%',
+  },
+  policyModalContent: {
+    paddingBottom: 16,
+  },
+  policyModalText: {
+    fontSize: 14,
+    lineHeight: 22,
+    color: theme.textSecondary,
   },
 });

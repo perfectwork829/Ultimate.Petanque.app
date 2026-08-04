@@ -503,9 +503,9 @@ export default function HomeScreen() {
     if (selfPlayer?.isPublic && totalMatches < LEADERBOARD_MIN_MATCHES) s.push({ key: 'progress', data: ['progress'] });
     // Team Builder (always visible — shows create prompt if no tournaments)
     s.push({ key: 'teamBuilder' as SectionKey, data: ['teamBuilder' as SectionKey] });
-    s.push({ key: 'timeline', data: ['timeline'] });
-    // Ad banner after timeline — first natural break point
+    // Ad banner between Team Up and Upcoming section
     s.push({ key: 'adBanner1', data: ['adBanner1'] });
+    s.push({ key: 'timeline', data: ['timeline'] });
     if (matches.length > 0 || challenges.length > 0) s.push({ key: 'weeklyStats', data: ['weeklyStats'] });
     s.push({ key: 'divider1', data: ['divider1'] });
     if (featuredAmbassadors.length > 0) {

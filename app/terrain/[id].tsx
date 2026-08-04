@@ -795,15 +795,6 @@ export default function TerrainDetailScreen() {
             </View>
             <MaterialIcons name="directions" size={24} color={theme.primary} />
           </Pressable>
-          {(terrain.location?.latitude || terrain.location?.longitude) ? (
-            <Pressable
-              style={styles.mapButton}
-              onPress={() => router.push({ pathname: '/(tabs)/map', params: { lat: String(terrain.location?.latitude || 0), lng: String(terrain.location?.longitude || 0), name: terrain.name, mf: String(Date.now()) } } as any)}
-            >
-              <MaterialIcons name="map" size={20} color={theme.primary} />
-              <Text style={styles.mapButtonText}>{t('club', 'viewOnMap')}</Text>
-            </Pressable>
-          ) : null}
         </View>
 
         {/* Clubs using this terrain */}
@@ -850,6 +841,17 @@ export default function TerrainDetailScreen() {
           </View>
         ) : null}
 
+        </View>
+        <View style={[styles.section, isTablet && styles.tabletHalf]}>
+          {(terrain.location?.latitude || terrain.location?.longitude) ? (
+            <Pressable
+              style={styles.mapButton}
+              onPress={() => router.push({ pathname: '/(tabs)/map', params: { lat: String(terrain.location?.latitude || 0), lng: String(terrain.location?.longitude || 0), name: terrain.name, filter: 'terrains', mf: String(Date.now()) } } as any)}
+            >
+              <MaterialIcons name="map" size={20} color={theme.primary} />
+              <Text style={styles.mapButtonText}>{t('club', 'viewOnMap')}</Text>
+            </Pressable>
+          ) : null}
         </View>
 
         {/* Quick Info — 3 per row, below address */}
@@ -2130,9 +2132,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    alignSelf: 'center',
     gap: 8,
     backgroundColor: theme.primaryLight + '20',
     paddingVertical: 12,
+    paddingHorizontal: 22,
+    width: '100%',
     borderRadius: theme.borderRadius.md,
     marginTop: 12,
   },

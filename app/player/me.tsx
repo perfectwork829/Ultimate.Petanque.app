@@ -413,7 +413,7 @@ export default function MyPlayerCardScreen() {
       </View>
 
       <ScrollView style={s.scrollView} contentContainerStyle={[s.scrollContent, { paddingBottom: insets.bottom + 32 }, isTablet && s.scrollContentTablet]} showsVerticalScrollIndicator={false}>
-        <View style={isTablet ? s.tabletRow : undefined}>
+        <View style={s.sectionCard}>
           <View style={isTablet ? s.tabletLeft : undefined}>
 
             {/* ===== HERO CARD (matching profile style) ===== */}
