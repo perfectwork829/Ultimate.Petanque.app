@@ -29,8 +29,9 @@ export interface TerrainActivityInfo {
   activeNowLabel: string;
   /** Score based on habitual activity at this day-of-week + hour */
   habitualScore: number;
-  /** True when historical/weekly activity matches the current day/hour. */
+  /** True only when configured weekly/habitual activity matches the current weekday + hour window. */
   hasActivityToday?: boolean;
+  hasHabitualNow?: boolean;
   hasLiveMeetup?: boolean;
   hasLiveTournament?: boolean;
   hasLiveMatch?: boolean;
@@ -438,7 +439,7 @@ export function useTerrainActivity(): Map<string, TerrainActivityInfo> {
         }
       });
 
-      // Global community stats for habitual patterns
+      // Global community stats for labels/ranking only.
       const gStats = globalTerrainStats.get(tr.id);
       const globalPeakSameDayAndHour = Boolean(
         gStats &&
@@ -448,17 +449,17 @@ export function useTerrainActivity(): Map<string, TerrainActivityInfo> {
       );
       const weeklyActivityNow = terrainWeeklyActivityMatchesNow(tr, now);
 
-      // Green habitual pulse must mean activity normally happens for this exact
-      // day/hour window. Do not show green just because the terrain has general
-      // activity on another day, or because it is active in the overall ranking.
-      const hasActivityToday = Boolean(weeklyActivityNow || sameDayHourCount > 0 || globalPeakSameDayAndHour);
+      // Green habitual pulse must be STRICT: it should come from the court's
+      // configured weekly/habitual activity and must match the current weekday
+      // AND current hour window. Historical matches/challenges/global stats are
+      // useful for ranking text, but they must not make a court pulse green.
+      const hasActivityToday = Boolean(weeklyActivityNow);
+      const hasHabitualNow = Boolean(weeklyActivityNow);
 
-      // Habitual score: how likely is activity NOW based on historical patterns.
-      // Day-only history contributes to ranking/labels but does not enable green pulse.
-      const habitualScore =
-        (weeklyActivityNow ? 40 : 0) +
-        sameDayHourCount * 15 +
-        (globalPeakSameDayAndHour ? gStats!.peakHourCount * 8 : 0);
+      // Habitual score for the green pulse. Keep this strict as well, otherwise
+      // courts with old Tuesday activity can still appear when searching Tuesday
+      // afternoon even if their recorded weekly activity was in the morning.
+      const habitualScore = weeklyActivityNow ? 40 : 0;
 
       // ========================================
       // 3) GENERAL SCORE (for overall ranking)
@@ -526,6 +527,7 @@ export function useTerrainActivity(): Map<string, TerrainActivityInfo> {
           activeNowLabel,
           habitualScore,
           hasActivityToday,
+          hasHabitualNow,
           hasLiveMeetup,
           hasLiveTournament,
           hasLiveMatch,

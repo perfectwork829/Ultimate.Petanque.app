@@ -2417,20 +2417,44 @@ useEffect(() => {
     }
   }, [results, precacheMarkerImages]);
 
-  // Compute clusters with debounced region to avoid expensive re-clustering on every pan
-  const [debouncedClusterInput, setDebouncedClusterInput] = useState({ results, region: currentRegion });
+  // Fire mode must only pass active terrains to marker rendering/clustering.
+  // Otherwise, at max zoom-out, inactive courts can still be included inside a cluster
+  // popup even though renderMapMarkers hides their individual pins.
+  const visibleMapResults = useMemo(() => {
+    if (!activeNowMode) return results;
+    return results.filter((item: any) =>
+      item.itemType === 'terrains' &&
+      (liveTerrainIds.has(item.id) || habitualTerrainIds.has(item.id)) &&
+      isValidMapCoord(item.location?.latitude, item.location?.longitude)
+    );
+  }, [activeNowMode, results, liveTerrainIds, habitualTerrainIds]);
+
+  // Compute clusters with debounced region to avoid expensive re-clustering on every pan.
+  const [debouncedClusterInput, setDebouncedClusterInput] = useState({ results: visibleMapResults, region: currentRegion });
 
   useEffect(() => {
     if (clusterDebounceRef.current) clearTimeout(clusterDebounceRef.current);
     clusterDebounceRef.current = setTimeout(() => {
-      setDebouncedClusterInput({ results, region: currentRegion });
+      setDebouncedClusterInput({ results: visibleMapResults, region: currentRegion });
     }, 120);
     return () => { if (clusterDebounceRef.current) clearTimeout(clusterDebounceRef.current); };
-  }, [results, currentRegion]);
+  }, [visibleMapResults, currentRegion]);
 
   const clusters = useMemo(() => {
+    if (activeNowMode) {
+      // Do not cluster fire-mode courts. Each red/green marker must stay on its
+      // exact terrain coordinates so inactive nearby courts never appear in the
+      // grouped bottom sheet at maximum zoom-out.
+      return debouncedClusterInput.results.map((item: any) => ({
+        id: `fire-${item.itemType}-${item.id}`,
+        latitude: item.location?.latitude || 0,
+        longitude: item.location?.longitude || 0,
+        items: [item],
+        isCluster: false,
+      }));
+    }
     return clusterMarkers(debouncedClusterInput.results, debouncedClusterInput.region);
-  }, [debouncedClusterInput]);
+  }, [activeNowMode, debouncedClusterInput]);
 
   // Total items in directory (regardless of location)
   const totalCounts = useMemo(() => ({
@@ -2476,7 +2500,12 @@ useEffect(() => {
   }, [terrains, clubs, enrichedPlayers, tournaments, hasValidLocation, canUserGeolocateItem, t]);
 
   const counts = useMemo(() => {
-    const countType = (type: string) => results.filter(r => r.itemType === type).length;
+    // In fire mode, the header counters must reflect only the courts currently
+    // shown on the map: live red + habitual green active terrains.
+    // Otherwise the big court counter keeps showing all created courts while the
+    // small active-terrain legend shows the correct active count.
+    const countSource = activeNowMode ? visibleMapResults : results;
+    const countType = (type: string) => countSource.filter(r => r.itemType === type).length;
 
     return {
       terrains: countType('terrains'),
@@ -2485,10 +2514,10 @@ useEffect(() => {
       tournaments: countType('tournaments'),
       events: countType('events'),
       partners: countType('partners'),
-      total: results.length,
-      publicTotal: results.filter(r => r._isPublic).length,
+      total: countSource.length,
+      publicTotal: countSource.filter(r => r._isPublic).length,
     };
-  }, [results]);
+  }, [activeNowMode, results, visibleMapResults]);
 
   const handleSelect = useCallback((item: any, type: string) => {
     if (!item) return;
@@ -2791,7 +2820,7 @@ useEffect(() => {
       const isLive = hasLiveCourtActivity(info);
       const isHabitualToday =
         !isLive &&
-        Boolean(info.hasActivityToday);
+        Boolean((info as any).hasHabitualNow || (info.hasActivityToday && info.habitualScore > 0));
 
       if (isLive) {
         liveIds.add(terrainId);
@@ -2817,35 +2846,24 @@ useEffect(() => {
   const terrainPulseItems = useMemo(() => {
     if (!activeNowMode) return [];
 
-    const items: { id: string; latitude: number; longitude: number; color: string }[] = [];
-
-    for (const cluster of clusters) {
-      if (cluster.isCluster) continue;
-
-      const item = cluster.items[0];
-
-      if (item.itemType !== 'terrains') continue;
-
-      const isLive = liveTerrainIds.has(item.id);
-      const isHabitualToday = habitualTerrainIds.has(item.id);
-
-      if (!isLive && !isHabitualToday) continue;
-
-      const latitude = cluster.latitude;
-      const longitude = cluster.longitude;
-
-      if (!isValidMapCoord(latitude, longitude)) continue;
-
-      items.push({
-        id: item.id,
-        latitude,
-        longitude,
-        color: isLive ? LIVE_TERRAIN_PULSE_COLOR : HABITUAL_TERRAIN_PULSE_COLOR,
-      });
-    }
-
-    return items;
-  }, [activeNowMode, clusters, liveTerrainIds, habitualTerrainIds]);
+    return visibleMapResults
+      .filter((item: any) => item.itemType === 'terrains')
+      .map((item: any) => {
+        const latitude = item.location?.latitude;
+        const longitude = item.location?.longitude;
+        if (!isValidMapCoord(latitude, longitude)) return null;
+        const isLive = liveTerrainIds.has(item.id);
+        const isHabitualToday = habitualTerrainIds.has(item.id);
+        if (!isLive && !isHabitualToday) return null;
+        return {
+          id: item.id,
+          latitude,
+          longitude,
+          color: isLive ? LIVE_TERRAIN_PULSE_COLOR : HABITUAL_TERRAIN_PULSE_COLOR,
+        };
+      })
+      .filter(Boolean) as { id: string; latitude: number; longitude: number; color: string }[];
+  }, [activeNowMode, visibleMapResults, liveTerrainIds, habitualTerrainIds]);
 
   // Access matches for active-now computation
   const { matches: allMatches } = useAppData();

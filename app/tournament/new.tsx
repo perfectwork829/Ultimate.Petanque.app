@@ -406,7 +406,7 @@ export default function NewTournamentScreen() {
       <StepIndicator step={progress.filled} total={progress.total} label={progressLabel} />
 
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-        <ScrollView style={styles.scrollView} contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 100 }]} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+        <ScrollView style={styles.scrollView} contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 120 }]} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" removeClippedSubviews={false}>
 
           {/* 1. Nom */}
           <SectionCard title={t('tournament', 'tournamentName')} icon="emoji-events" color={theme.carreauColor} delay={50} required>
@@ -960,46 +960,48 @@ const styles = StyleSheet.create({
   sectionCardSubtitle: { fontSize: 11, color: theme.textMuted, marginTop: 1 },
   requiredDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: theme.error },
 
-  // Keep the Location, Game Format, Tournament System, and Organizing Club
-  // cards in the normal vertical flow. Android can draw lower cards over upper
-  // cards when animated siblings share the same elevation/zIndex, especially
-  // after the manual LocationPicker expands. Use a descending stack order so
-  // the Tournament System card is never visually cut by Organizing Club.
+  // Keep Location, Game Format, Tournament System, and Organizing Club
+  // in the normal document flow. Do not use descending zIndex/elevation here:
+  // on Android, elevated lower cards can paint over the previous animated card
+  // after LocationPicker expands/collapses, making Tournament System look cut
+  // by Organizing Club. These cards stay flat and separated instead.
   locationSectionCard: {
     position: 'relative',
-    zIndex: 40,
-    elevation: 4,
+    zIndex: 1,
+    elevation: 0,
     overflow: 'visible',
-    marginBottom: 14,
+    marginBottom: 16,
   },
   locationPickerWrapper: {
     marginTop: 14,
-    marginBottom: 18,
+    marginBottom: 22,
     position: 'relative',
-    zIndex: 50,
-    elevation: 5,
+    zIndex: 2,
+    elevation: 0,
     overflow: 'visible',
   },
   gameFormatSectionCard: {
     position: 'relative',
-    zIndex: 30,
-    elevation: 3,
-    overflow: 'visible',
-    marginBottom: 14,
+    zIndex: 0,
+    elevation: 0,
+    overflow: 'hidden',
+    marginBottom: 16,
   },
   cadrageSectionCard: {
     position: 'relative',
-    zIndex: 20,
-    elevation: 2,
-    overflow: 'visible',
-    marginBottom: 14,
+    zIndex: 0,
+    elevation: 0,
+    overflow: 'hidden',
+    marginBottom: 24,
+    paddingBottom: 18,
   },
   organizerClubSectionCard: {
     position: 'relative',
-    zIndex: 10,
-    elevation: 1,
-    overflow: 'visible',
+    zIndex: 0,
+    elevation: 0,
+    overflow: 'hidden',
     marginTop: 0,
+    marginBottom: 16,
   },
 
   textInput: { backgroundColor: theme.backgroundSecondary, paddingHorizontal: 14, paddingVertical: 13, borderRadius: theme.borderRadius.md, fontSize: 15, color: theme.textPrimary, borderWidth: 1, borderColor: theme.border },
