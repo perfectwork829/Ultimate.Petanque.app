@@ -28,7 +28,7 @@ interface DayActivity {
   matches: { id: string; date: string; teamANames: string[]; teamBNames: string[]; scoreA: number; scoreB: number; winner: string }[];
   meetups: { id: string; title: string; date: string; status: string }[];
   tournaments: { id: string; name: string; date: string; status: string }[];
-  challenges: { id: string; type: string; date: string; mode?: string; totalShots?: number; totalPoints?: number; maxPoints?: number }[];
+  challenges: { id: string; type: string; date: string; mode?: string; title?: string; totalShots?: number; totalPoints?: number; maxPoints?: number; isSponsoredEvent?: boolean; startTime?: string | null; endTime?: string | null }[];
   total: number;
 }
 
@@ -66,6 +66,41 @@ function toDateKey(value: any): string | null {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
+function pickActivityDateKey(...values: any[]): string | null {
+  for (const value of values) {
+    const key = toDateKey(value);
+    if (key) return key;
+  }
+  return null;
+}
+
+function combineDateAndTime(baseDate?: string | null, timeValue?: string | null): Date | null {
+  if (!baseDate && !timeValue) return null;
+  if (timeValue) {
+    const direct = new Date(timeValue);
+    if (!Number.isNaN(direct.getTime()) && String(timeValue).includes('T')) return direct;
+
+    const match = String(timeValue).match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+    if (match && baseDate) {
+      const dateKey = toDateKey(baseDate);
+      if (!dateKey) return null;
+      const d = new Date(`${dateKey}T12:00:00`);
+      d.setHours(Number(match[1]), Number(match[2]), Number(match[3] || 0), 0);
+      return d;
+    }
+  }
+
+  const dateKey = toDateKey(baseDate || timeValue);
+  if (!dateKey) return null;
+  return new Date(`${dateKey}T12:00:00`);
+}
+
+function formatActivityTime(date?: string | null, startTime?: string | null, fr = false): string {
+  const d = combineDateAndTime(date, startTime || date);
+  if (!d) return '';
+  return d.toLocaleTimeString(fr ? 'fr-FR' : 'en-US', { hour: '2-digit', minute: '2-digit' });
+}
+
 function isSameViewedMonth(dateKey: string | null, year: number, month: number): boolean {
   if (!dateKey) return false;
   const [y, m] = dateKey.split('-').map(Number);
@@ -97,6 +132,8 @@ export default function TerrainActivityScreen() {
   const [monthOffset, setMonthOffset] = useState(0); // 0 = current month, -1 = prev, etc.
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
   const [meetupsData, setMeetupsData] = useState<{ terrain_id: string; date: string; title: string; status: string; id: string }[]>([]);
+  const [terrainChallengesData, setTerrainChallengesData] = useState<any[]>([]);
+  const [sponsoredChallengesData, setSponsoredChallengesData] = useState<any[]>([]);
 
   const now = new Date();
   const viewYear = new Date(now.getFullYear(), now.getMonth() + monthOffset, 1).getFullYear();
@@ -105,21 +142,38 @@ export default function TerrainActivityScreen() {
   const monthNames = fr ? MONTH_NAMES_FR : MONTH_NAMES_EN;
   const dayNames = fr ? DAY_NAMES_FR : DAY_NAMES_EN;
 
-  // Load meetups from Supabase
+  // Load meetups, regular terrain challenges, and ambassador/sponsored challenges from Supabase.
+  // We query regular challenges directly here because AppContext can be stale after
+  // creating a challenge, and the DB column is terrain_id while in-app objects may
+  // be terrainId. This makes the Activity History board reflect the selected court
+  // immediately and reliably.
   useEffect(() => {
     if (!id) return;
-    const loadMeetups = async () => {
+    const loadRemoteActivity = async () => {
       try {
         const supabase = getSupabaseClient();
-        const { data } = await supabase
-          .from('terrain_meetups')
-          .select('id, terrain_id, date, title, status')
-          .eq('terrain_id', id);
-        setMeetupsData(data || []);
+        const [{ data: meetups }, { data: terrainChallenges }, { data: sponsoredChallenges }] = await Promise.all([
+          supabase
+            .from('terrain_meetups')
+            .select('id, terrain_id, date, title, status')
+            .eq('terrain_id', id),
+          supabase
+            .from('challenges')
+            .select('*')
+            .eq('terrain_id', id),
+          supabase
+            .from('sponsored_events')
+            .select('id, title, challenge_type, challenge_mode, event_date, start_time, end_time, terrain_id, status')
+            .eq('terrain_id', id)
+            .neq('status', 'cancelled'),
+        ]);
+        setMeetupsData(meetups || []);
+        setTerrainChallengesData(terrainChallenges || []);
+        setSponsoredChallengesData(sponsoredChallenges || []);
       } catch { /* silent */ }
       setLoading(false);
     };
-    loadMeetups();
+    loadRemoteActivity();
   }, [id]);
 
   // Build day activity map for the viewed month
@@ -168,7 +222,7 @@ export default function TerrainActivityScreen() {
 
     // Tournaments
     allTournaments.filter(t => t.terrainId === id).forEach(t => {
-      const dateStr = toDateKey(t.date);
+      const dateStr = pickActivityDateKey((t as any).date, (t as any).eventDate, (t as any).event_date);
       if (isSameViewedMonth(dateStr, viewYear, viewMonth)) {
         const entry = map.get(dateStr!);
         if (entry) {
@@ -178,20 +232,42 @@ export default function TerrainActivityScreen() {
       }
     });
 
-    // Challenges — count as terrain activity too
-    allChallenges.filter((c: any) => {
-      const linkedTerrainId = c.terrainId || c.terrain_id || c.courtId || c.court_id;
-      return linkedTerrainId === id;
-    }).forEach((c: any) => {
-      const dateStr = toDateKey(c.date);
+    // Challenges — count as terrain activity too.
+    // Prefer direct DB rows from this terrain, then merge AppContext rows. This
+    // avoids missing a freshly-created challenge before global app data refreshes.
+    const seenChallengeIds = new Set<string>();
+    const terrainChallengeRows = [
+      ...terrainChallengesData,
+      ...allChallenges.filter((c: any) => {
+        const linkedTerrainId = c.terrainId || c.terrain_id || c.courtId || c.court_id || c.terrain?.id;
+        return String(linkedTerrainId || '') === String(id);
+      }),
+    ];
+
+    terrainChallengeRows.forEach((c: any) => {
+      if (!c?.id) return;
+      const challengeId = String(c.id);
+      if (seenChallengeIds.has(challengeId)) return;
+      seenChallengeIds.add(challengeId);
+
+      const dateStr = pickActivityDateKey(
+        c.activityDate,
+        c.activity_date,
+        c.eventDate,
+        c.event_date,
+        c.date,
+        c.created_at
+      );
+
       if (isSameViewedMonth(dateStr, viewYear, viewMonth)) {
         const entry = map.get(dateStr!);
         if (entry) {
           entry.challenges.push({
             id: c.id,
-            type: c.type,
-            date: c.date,
-            mode: c.mode,
+            type: c.type || c.challenge_type || 'challenge',
+            date: c.date || c.eventDate || c.event_date || dateStr!,
+            mode: c.mode || c.challenge_mode,
+            title: c.title || c.name || getChallengeLabel(c.type || c.challenge_type, fr),
             totalShots: c.totalShots ?? c.total_shots,
             totalPoints: c.totalPoints ?? c.total_points,
             maxPoints: c.maxPoints ?? c.max_points,
@@ -201,8 +277,30 @@ export default function TerrainActivityScreen() {
       }
     });
 
+    // Ambassador/sponsored challenges are stored in sponsored_events, not the
+    // regular challenges array, so they must be added separately.
+    sponsoredChallengesData.forEach((c: any) => {
+      const dateStr = pickActivityDateKey(c.event_date, c.eventDate, c.start_time, c.startTime);
+      if (isSameViewedMonth(dateStr, viewYear, viewMonth)) {
+        const entry = map.get(dateStr!);
+        if (entry) {
+          entry.challenges.push({
+            id: c.id,
+            type: c.challenge_type || c.challengeType || 'challenge',
+            date: c.event_date || c.eventDate || dateStr!,
+            startTime: c.start_time || c.startTime || null,
+            endTime: c.end_time || c.endTime || null,
+            mode: c.challenge_mode || c.challengeMode,
+            title: c.title,
+            isSponsoredEvent: true,
+          });
+          entry.total++;
+        }
+      }
+    });
+
     return map;
-  }, [id, allMatches, allTournaments, allChallenges, meetupsData, viewYear, viewMonth]);
+  }, [id, allMatches, allTournaments, allChallenges, meetupsData, terrainChallengesData, sponsoredChallengesData, viewYear, viewMonth, fr]);
 
   const maxDayCount = useMemo(() => {
     let max = 1;
@@ -464,14 +562,15 @@ export default function TerrainActivityScreen() {
 
                   {/* Challenges */}
                   {selectedDayData.challenges.map((c) => (
-                    <Pressable key={c.id} style={s.dayItem} onPress={() => router.push(`/challenge/${c.id}` as any)}>
+                    <Pressable key={c.id} style={s.dayItem} onPress={() => router.push(c.isSponsoredEvent ? `/sponsored-event/${c.id}` as any : `/challenge/${c.id}` as any)}>
                       <View style={[s.dayItemIcon, { backgroundColor: '#8B5CF615' }]}>
                         <MaterialIcons name="track-changes" size={16} color="#8B5CF6" />
                       </View>
                       <View style={{ flex: 1 }}>
-                        <Text style={s.dayItemTitle} numberOfLines={1}>{getChallengeLabel(c.type, fr)}</Text>
+                        <Text style={s.dayItemTitle} numberOfLines={1}>{c.title || getChallengeLabel(c.type, fr)}</Text>
                         <Text style={s.dayItemSub}>
-                          {new Date(c.date).toLocaleTimeString(fr ? 'fr-FR' : 'en-US', { hour: '2-digit', minute: '2-digit' })}
+                          {formatActivityTime(c.date, c.startTime || c.date, fr)}
+                          {c.endTime ? ` - ${formatActivityTime(c.date, c.endTime, fr)}` : ''}
                           {c.totalShots ? ` • ${c.totalShots} tirs` : ''}
                           {c.totalPoints != null && c.maxPoints ? ` • ${c.totalPoints}/${c.maxPoints} pts` : ''}
                         </Text>

@@ -59,6 +59,7 @@ type MarkerType = 'all' | 'terrains' | 'clubs' | 'tournaments' | 'players' | 'ev
 type MapMode = 'all' | 'public';
 const LIVE_TERRAIN_PULSE_COLOR = '#EF4444';
 const HABITUAL_TERRAIN_PULSE_COLOR = '#22C55E';
+const TOURNAMENT_GOLD_COLOR = '#EAB308';
 
 let MapViewComponent: React.ComponentType<any> | null = null;
 let MarkerComponent: React.ComponentType<any> | null = null;
@@ -1104,7 +1105,7 @@ const SingleMarkerView = React.memo(({ color, icon, isPublic, accessIndicator, f
 const CLUSTER_COLOR_MAP: Record<string, string> = {
   terrains: theme.success,
   clubs: theme.accent,
-  tournaments: theme.carreauColor,
+  tournaments: TOURNAMENT_GOLD_COLOR,
   players: theme.primary,
 };
 const CLUSTER_ICON_MAP: Record<string, string> = {
@@ -1273,7 +1274,7 @@ const TournamentSubFilters = React.memo(({ tournamentFormatFilter, tournamentSta
         <Text style={styles.subFilterLabelText}>Format</Text>
       </View>
       {(['Doublette', 'Triplette', 'Tete-a-tete'] as const).map(fmt => (
-        <SubFilterChip key={fmt} label={fmt} isActive={tournamentFormatFilter === fmt} color={theme.carreauColor} onPress={() => onFormatPress(fmt)} />
+        <SubFilterChip key={fmt} label={fmt} isActive={tournamentFormatFilter === fmt} color={TOURNAMENT_GOLD_COLOR} onPress={() => onFormatPress(fmt)} />
       ))}
     </ScrollView>
     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.subFiltersRow}>
@@ -1358,7 +1359,7 @@ const PlayerSubFilters = React.memo(({ eloRankFilter, eloRangeFilter, trustFilte
 // LIST ITEM COMPONENT
 // ============================================
 const ListItem = React.memo(({ item, onPress, singularLabel, terrainTypeLabel, isPublicItem, onImport, t }: any) => {
-  const MARKER_COLORS: Record<string, string> = { terrains: theme.success, clubs: theme.accent, tournaments: theme.carreauColor, players: theme.primary };
+  const MARKER_COLORS: Record<string, string> = { terrains: theme.success, clubs: theme.accent, tournaments: TOURNAMENT_GOLD_COLOR, players: theme.primary };
   const MARKER_ICONS: Record<string, string> = { terrains: 'sports-soccer', clubs: 'home', tournaments: 'emoji-events', players: 'person' };
   const color = MARKER_COLORS[item.itemType] || theme.primary;
   const icon = MARKER_ICONS[item.itemType] || 'place';
@@ -1773,7 +1774,7 @@ export default function MapScreen() {
   const MARKER_CONFIG = useMemo(() => ({
     terrains: { label: t('map', 'terrains'), singular: t('map', 'terrainSingular'), icon: 'sports-soccer', color: theme.success },
     clubs: { label: t('map', 'clubs'), singular: t('map', 'clubSingular'), icon: 'home', color: theme.accent },
-    tournaments: { label: t('map', 'tournaments'), singular: t('map', 'tournamentSingular'), icon: 'emoji-events', color: theme.carreauColor },
+    tournaments: { label: t('map', 'tournaments'), singular: t('map', 'tournamentSingular'), icon: 'emoji-events', color: TOURNAMENT_GOLD_COLOR },
     players: { label: t('map', 'players'), singular: t('map', 'playerSingular'), icon: 'person', color: theme.primary },
     events: { label: language === 'fr' ? 'Defis' : 'Challenges', singular: language === 'fr' ? 'Defi' : 'Challenge', icon: 'campaign', color: '#7C3AED' },
     partners: { label: language === 'fr' ? 'Partenaires' : 'Partners', singular: language === 'fr' ? 'Partenaire' : 'Partner', icon: 'handshake', color: '#D4A017' },
@@ -1785,7 +1786,7 @@ export default function MapScreen() {
       all: ['#0F172A', '#1E3A8A', '#2563EB'],
       terrains: ['#022C22', '#064E3B', '#10B981'],
       clubs: ['#451A03', '#92400E', '#D97706'],
-      tournaments: ['#451A03', '#78350F', '#B45309'],
+      tournaments: ['#422006', '#A16207', TOURNAMENT_GOLD_COLOR],
       players: ['#0F172A', '#1E3A8A', '#2563EB'],
       events: ['#2E1065', '#5B21B6', '#7C3AED'],
       partners: ['#451A03', '#78350F', '#D4A017'],
@@ -1798,7 +1799,7 @@ export default function MapScreen() {
       all: theme.primary,
       terrains: theme.success,
       clubs: theme.accent,
-      tournaments: theme.carreauColor,
+      tournaments: TOURNAMENT_GOLD_COLOR,
       players: theme.primary,
       events: '#7C3AED',
       partners: '#D4A017',
@@ -2495,7 +2496,7 @@ useEffect(() => {
       .forEach(i => items.push({ id: i.id, name: i.name, type: t('map', 'playerSingular'), icon: 'person', color: theme.primary, route: `/player/edit/${i.id}` }));
     tournaments
       .filter(i => !hasValidLocation(i) && canUserGeolocateItem(i))
-      .forEach(i => items.push({ id: i.id, name: i.name, type: t('map', 'tournamentSingular'), icon: 'emoji-events', color: theme.carreauColor, route: `/tournament/edit/${i.id}` }));
+      .forEach(i => items.push({ id: i.id, name: i.name, type: t('map', 'tournamentSingular'), icon: 'emoji-events', color: TOURNAMENT_GOLD_COLOR, route: `/tournament/edit/${i.id}` }));
     return items;
   }, [terrains, clubs, enrichedPlayers, tournaments, hasValidLocation, canUserGeolocateItem, t]);
 
@@ -2628,6 +2629,14 @@ useEffect(() => {
 
   const handleFilterPress = useCallback((f: MarkerType) => {
     Haptics.selectionAsync();
+
+    // Fire mode is a special "active courts" view.
+    // When the user selects any normal category (Players, Tournaments,
+    // Challenges, Clubs, etc.), turn fire mode off first so that the selected
+    // category markers are rendered normally.
+    setActiveNowMode(false);
+    setActiveNowTerrainIds(prev => (prev.size === 0 ? prev : new Set()));
+
     setFilter(f);
     setSelected(null);
     // Reset sub-filters when switching categories

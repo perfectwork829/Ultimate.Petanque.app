@@ -214,7 +214,7 @@ export default function DirectoryScreen() {
   const [eventsLoading, setEventsLoading] = useState(true);
 
   // Partner data for tier badges in directory — lazy loaded
-  const [partnerUserIds, setPartnerUserIds] = useState<Map<string, { tier: string; name: string }>>(new Map());
+  const [partnerUserIds, setPartnerUserIds] = useState<Map<string, any>>(new Map());
   const partnerLoaded = useRef(false);
   useEffect(() => {
     // Defer partner badge loading to avoid blocking initial render
@@ -222,10 +222,11 @@ export default function DirectoryScreen() {
       if (partnerLoaded.current) return;
       partnerLoaded.current = true;
       fetchAmbassadors().then(({ ambassadors }) => {
-        const map = new Map<string, { tier: string; name: string }>();
+        const map = new Map<string, any>();
         ambassadors.forEach(a => {
-          if (a.badgeType === 'gold_sponsor' || a.badgeType === 'sponsor' || a.badgeType === 'partner') {
-            const info = { tier: a.badgeType, name: a.displayName };
+          const isActiveSponsor = (a as any).isActive !== false && (a as any).status !== 'inactive' && (a as any).status !== 'disabled';
+          if (isActiveSponsor && (a.badgeType === 'gold_sponsor' || a.badgeType === 'sponsor' || a.badgeType === 'partner')) {
+            const info = { tier: a.badgeType, name: a.displayName, isActive: true, brandColor: (a as any).brandColor || null };
             map.set(a.userId, info);
             // Key by ambassador ID (for sponsorId lookups on clubs/terrains/tournaments)
             map.set(a.id, info);
@@ -1103,8 +1104,8 @@ export default function DirectoryScreen() {
   }, [favoriteTerrainIds, getSharedPermission, partnerUserIds, t, language, terrainActivityMap, user?.id]);
 
   const renderTournament = useCallback(({ item }: { item: Tournament }) => {
-    return <MemoizedTournamentCard item={item} getSharedPermission={getSharedPermission} t={t} language={language} getStatusLabel={getStatusLabel} userId={user?.id} />;
-  }, [getSharedPermission, t, language, user?.id]);
+    return <MemoizedTournamentCard item={item} getSharedPermission={getSharedPermission} partnerUserIds={partnerUserIds} t={t} language={language} getStatusLabel={getStatusLabel} userId={user?.id} />;
+  }, [getSharedPermission, partnerUserIds, t, language, user?.id]);
 
   const renderEvent = useCallback(({ item }: { item: any }) => {
     return <MemoizedEventCard item={item} language={language} />;
@@ -2529,9 +2530,16 @@ export default function DirectoryScreen() {
 // ============================================
 // MEMOIZED CARD COMPONENTS
 // ============================================
+function getActiveSponsorInfo(partnerUserIds: Map<string, any>, sponsorId?: string | null): any | undefined {
+  if (!sponsorId) return undefined;
+  const info = partnerUserIds.get(String(sponsorId));
+  if (!info || info.isActive === false) return undefined;
+  return info;
+}
+
 const MemoizedPlayerCard = React.memo(({ item, selfPlayer, getSharedPermission, partnerUserIds, t, language, handleInviteToMeetup, user }: {
   item: Player; selfPlayer: Player | null; getSharedPermission: (id: string) => string | null;
-  partnerUserIds: Map<string, { tier: string; name: string }>; t: (s: string, k: string) => string;
+  partnerUserIds: Map<string, any>; t: (s: string, k: string) => string;
   language: string; handleInviteToMeetup: (id: string, name: string) => void; user: any;
 }) => {
 
@@ -2543,8 +2551,8 @@ const MemoizedPlayerCard = React.memo(({ item, selfPlayer, getSharedPermission, 
 
   // Only show partner badge for players with explicit playerId link in ambassadors table
   const partnerInfo = partnerUserIds.get(item.id);
-  const hasSponsor = !!item.sponsorId;
-  const sponsorInfo = hasSponsor ? partnerUserIds.get(item.sponsorId!) : undefined;
+  const sponsorInfo = getActiveSponsorInfo(partnerUserIds, item.sponsorId);
+  const hasSponsor = !!sponsorInfo;
   return (
     <Pressable
       style={[styles.itemCard, isSelf && styles.selfCard]}
@@ -2656,14 +2664,14 @@ const MapLinkButton = React.memo(({ lat, lng, name }: { lat: number; lng: number
 
 const MemoizedClubCard = React.memo(({ item, favoriteClubIds, getSharedPermission, partnerUserIds, t, language, userId }: {
   item: Club; favoriteClubIds: string[]; getSharedPermission: (id: string) => string | null;
-  partnerUserIds: Map<string, { tier: string; name: string }>; t: (s: string, k: string) => string; language: string; userId?: string;
+  partnerUserIds: Map<string, any>; t: (s: string, k: string) => string; language: string; userId?: string;
 }) => {
   const isOwner = !!(userId && item.userId && item.userId === userId);
   const sharedPerm = getSharedPermission(item.id);
   const isPublicItem = (item as any).isPublic;
   const isFavorite = favoriteClubIds.includes(item.id);
-  // Sponsor badge: show when item has explicit sponsor_id set (Silver/Gold sponsors only get banners, but badge shows for all)
-  const hasSponsor = !!(item as any).sponsorId;
+  const sponsorInfo = getActiveSponsorInfo(partnerUserIds, (item as any).sponsorId);
+  const hasSponsor = !!sponsorInfo;
   return (
     <Pressable style={[styles.itemCard, isFavorite && styles.favoriteCard]} onPress={() => router.push(`/club/${item.id}`)}>
       <View style={[styles.itemAvatar, { backgroundColor: theme.accent }]}>
@@ -2719,7 +2727,7 @@ const MemoizedClubCard = React.memo(({ item, favoriteClubIds, getSharedPermissio
 
 const MemoizedTerrainCard = React.memo(({ item, favoriteTerrainIds, getSharedPermission, partnerUserIds, t, language, getTerrainTypeConfig, activityInfo, userId }: {
   item: Terrain; favoriteTerrainIds: string[]; getSharedPermission: (id: string) => string | null;
-  partnerUserIds: Map<string, { tier: string; name: string }>; t: (s: string, k: string) => string;
+  partnerUserIds: Map<string, any>; t: (s: string, k: string) => string;
   language: string; getTerrainTypeConfig: (type: string) => any;
   activityInfo?: { score: number; matchCount: number; peakLabel: string; rank?: number; recentMatches?: number; recentChallenges?: number; recentTournaments?: number; isActiveNow?: boolean; activeNowLabel?: string; habitualScore?: number };
   userId?: string;
@@ -2729,7 +2737,8 @@ const MemoizedTerrainCard = React.memo(({ item, favoriteTerrainIds, getSharedPer
   const isFavorite = favoriteTerrainIds.includes(item.id);
   const sharedPerm = getSharedPermission(item.id);
   const isPublicItem = (item as any).isPublic;
-  const hasSponsor = !!item.sponsorId;
+  const sponsorInfo = getActiveSponsorInfo(partnerUserIds, item.sponsorId);
+  const hasSponsor = !!sponsorInfo;
   const hasMultiPhotos = item.photos && item.photos.length > 1;
   const [photoIdx, setPhotoIdx] = React.useState(0);
   return (
@@ -2814,8 +2823,9 @@ const MemoizedTerrainCard = React.memo(({ item, favoriteTerrainIds, getSharedPer
   );
 });
 
-const MemoizedTournamentCard = React.memo(({ item, getSharedPermission, t, language, getStatusLabel, userId }: {
+const MemoizedTournamentCard = React.memo(({ item, getSharedPermission, partnerUserIds, t, language, getStatusLabel, userId }: {
   item: Tournament; getSharedPermission: (id: string) => string | null;
+  partnerUserIds: Map<string, any>;
   t: (s: string, k: string) => string; language: string; getStatusLabel: (s: string) => string; userId?: string;
 }) => {
   const isOwner = !!(userId && item.userId && item.userId === userId);
@@ -2827,7 +2837,8 @@ const MemoizedTournamentCard = React.memo(({ item, getSharedPermission, t, langu
   const status = statusConfig[item.status] || statusConfig['Terminé'];
   const sharedPerm = getSharedPermission(item.id);
   const isPublicItem = (item as any).isPublic;
-  const hasSponsor = !!(item as any).sponsorId;
+  const sponsorInfo = getActiveSponsorInfo(partnerUserIds, (item as any).sponsorId);
+  const hasSponsor = !!sponsorInfo;
   const posterUrl = item.posterUrl;
   const isPosterPdf = !!posterUrl && posterUrl.toLowerCase().endsWith('.pdf');
   const hasPosterImage = !!posterUrl && !isPosterPdf;

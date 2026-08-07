@@ -294,12 +294,6 @@ export default function SponsoredEventListScreen() {
           <Pressable style={s.joinBtn} onPress={handleOpenScanner}>
             <MaterialIcons name="qr-code-scanner" size={20} color="#FFF" />
           </Pressable>
-          <Pressable style={[s.joinBtn, viewMode === 'cities' && { backgroundColor: 'rgba(255,255,255,0.35)' }]} onPress={() => setViewMode(viewMode === 'list' ? 'cities' : 'list')}>
-            <MaterialIcons name={viewMode === 'cities' ? 'view-list' : 'location-city'} size={20} color="#FFF" />
-          </Pressable>
-          <Pressable style={[s.joinBtn, { backgroundColor: 'rgba(255,255,255,0.2)' }]} onPress={() => { Haptics.selectionAsync(); router.push({ pathname: '/share-card', params: { type: 'event-leaderboard' } } as any); }}>
-            <MaterialIcons name="leaderboard" size={20} color="#FFF" />
-          </Pressable>
           <Pressable style={s.createBtn} onPress={() => router.push('/sponsored-event/new' as any)}>
             <MaterialIcons name="add" size={22} color="#FFF" />
           </Pressable>
@@ -345,9 +339,10 @@ export default function SponsoredEventListScreen() {
         <View style={s.centerState}><ActivityIndicator size="large" color="#7C3AED" /></View>
       ) : viewMode === 'cities' ? (
         <ScrollView
-          style={{ flex: 1 }}
-          contentContainerStyle={[s.listContent, { paddingBottom: insets.bottom + 32 }]}
+          style={{ flex: 1, overflow: 'visible' }}
+          contentContainerStyle={[s.listContent, s.cityListContent, { paddingBottom: insets.bottom + 48 }]}
           showsVerticalScrollIndicator={false}
+          removeClippedSubviews={false}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor="#7C3AED" />}
         >
           {/* City Discovery Header */}
@@ -369,16 +364,16 @@ export default function SponsoredEventListScreen() {
             cityGroups.map((group) => {
               const isExpanded = expandedCity === group.city;
               return (
-                <Animated.View key={group.city} entering={FadeInDown.duration(250)}>
+                <View key={group.city} style={s.cityGroupWrap}>
                   <Pressable
-                    style={({ pressed }) => [s.cityGroupCard, pressed && { opacity: 0.92 }]}
+                    style={({ pressed }) => [s.cityGroupCard, isExpanded && s.cityGroupCardExpanded, pressed && { opacity: 0.92 }]}
                     onPress={() => { Haptics.selectionAsync(); setExpandedCity(isExpanded ? null : group.city); }}
                   >
                     <View style={s.cityGroupIcon}>
                       <MaterialIcons name="location-city" size={22} color="#7C3AED" />
                     </View>
                     <View style={{ flex: 1 }}>
-                      <Text style={s.cityGroupName}>{group.city}</Text>
+                      <Text style={s.cityGroupName} numberOfLines={1}>{group.city}</Text>
                       <View style={s.cityGroupMeta}>
                         <Text style={s.cityGroupCount}>{group.events.length} {fr ? 'defi(s)' : 'challenge(s)'}</Text>
                         {group.activeCount > 0 ? (
@@ -411,7 +406,7 @@ export default function SponsoredEventListScreen() {
                           >
                             <View style={[s.cityEventTypeDot, { backgroundColor: typeColor[ev.challengeType] || '#7C3AED' }]} />
                             <View style={{ flex: 1 }}>
-                              <Text style={s.cityEventTitle} numberOfLines={1}>{ev.title}</Text>
+                              <Text style={s.cityEventTitle} numberOfLines={2}>{ev.title}</Text>
                               <View style={s.cityEventMetaRow}>
                                 <Text style={s.cityEventDate}>
                                   {evDate.toLocaleDateString(fr ? 'fr-FR' : 'en-US', { day: 'numeric', month: 'short' })}
@@ -441,7 +436,7 @@ export default function SponsoredEventListScreen() {
                       })}
                     </View>
                   ) : null}
-                </Animated.View>
+                </View>
               );
             })
           )}
@@ -626,26 +621,29 @@ const s = StyleSheet.create({
   cityDiscoveryTitle: { fontSize: 16, fontWeight: '700' as const, color: theme.textPrimary, flex: 1 },
   cityDiscoveryCount: { backgroundColor: '#7C3AED15', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10 },
   cityDiscoveryCountText: { fontSize: 12, fontWeight: '700' as const, color: '#7C3AED' },
-  cityGroupCard: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 12, backgroundColor: '#FFF', borderRadius: 16, padding: 16, marginBottom: 8, borderWidth: 1, borderColor: '#E2E8F0', ...theme.shadows.card },
+  cityListContent: { overflow: 'visible' as const },
+  cityGroupWrap: { marginBottom: 10, overflow: 'visible' as const },
+  cityGroupCard: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 12, backgroundColor: '#FFF', borderRadius: 16, padding: 16, marginBottom: 0, borderWidth: 1, borderColor: '#E2E8F0', ...theme.shadows.card },
+  cityGroupCardExpanded: { borderBottomLeftRadius: 12, borderBottomRightRadius: 12, borderColor: '#DDD6FE', marginBottom: 8 },
   cityGroupIcon: { width: 44, height: 44, borderRadius: 14, backgroundColor: '#7C3AED12', alignItems: 'center' as const, justifyContent: 'center' as const },
-  cityGroupName: { fontSize: 16, fontWeight: '700' as const, color: theme.textPrimary, marginBottom: 4 },
-  cityGroupMeta: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 8, flexWrap: 'wrap' as const },
+  cityGroupName: { fontSize: 16, fontWeight: '700' as const, color: theme.textPrimary, marginBottom: 4, flexShrink: 1 },
+  cityGroupMeta: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 8, rowGap: 4, flexWrap: 'wrap' as const },
   cityGroupCount: { fontSize: 12, fontWeight: '600' as const, color: theme.textSecondary },
   cityGroupLiveBadge: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 4, backgroundColor: '#22C55E15', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
   cityGroupLiveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#22C55E' },
   cityGroupLiveText: { fontSize: 9, fontWeight: '800' as const, color: '#22C55E' },
   cityGroupUpcomingBadge: { backgroundColor: '#F59E0B15', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
   cityGroupUpcomingText: { fontSize: 10, fontWeight: '700' as const, color: '#F59E0B' },
-  cityGroupEvents: { backgroundColor: '#F8FAFC', borderRadius: 14, marginBottom: 10, marginTop: -4, paddingHorizontal: 8, paddingVertical: 8, borderWidth: 1, borderColor: '#E2E8F0' },
-  cityEventRow: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 10, backgroundColor: '#FFF', borderRadius: 12, padding: 12, marginBottom: 6 },
-  cityEventTypeDot: { width: 10, height: 10, borderRadius: 5 },
-  cityEventTitle: { fontSize: 14, fontWeight: '600' as const, color: theme.textPrimary, marginBottom: 3 },
-  cityEventMetaRow: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 8 },
+  cityGroupEvents: { backgroundColor: '#F8FAFC', borderRadius: 14, marginBottom: 2, marginTop: 0, paddingHorizontal: 8, paddingTop: 8, paddingBottom: 2, borderWidth: 1, borderColor: '#DDD6FE', overflow: 'visible' as const },
+  cityEventRow: { flexDirection: 'row' as const, alignItems: 'flex-start' as const, gap: 10, backgroundColor: '#FFF', borderRadius: 12, padding: 12, marginBottom: 6, minHeight: 58 },
+  cityEventTypeDot: { width: 10, height: 10, borderRadius: 5, marginTop: 5 },
+  cityEventTitle: { fontSize: 14, fontWeight: '600' as const, color: theme.textPrimary, marginBottom: 3, lineHeight: 18 },
+  cityEventMetaRow: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 8, rowGap: 3, flexWrap: 'wrap' as const },
   cityEventDate: { fontSize: 11, fontWeight: '600' as const, color: theme.textSecondary },
   cityEventTime: { fontSize: 11, color: theme.textMuted },
   cityEventType: { fontSize: 10, fontWeight: '700' as const },
-  cityEventLive: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 2, backgroundColor: '#22C55E', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
+  cityEventLive: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 2, backgroundColor: '#22C55E', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, marginTop: 2 },
   cityEventLiveText: { fontSize: 8, fontWeight: '800' as const, color: '#FFF' },
-  cityEventMaxBadge: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 3, backgroundColor: '#F1F5F9', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
+  cityEventMaxBadge: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 3, backgroundColor: '#F1F5F9', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, marginTop: 2 },
   cityEventMaxText: { fontSize: 11, fontWeight: '600' as const, color: theme.textMuted },
 });

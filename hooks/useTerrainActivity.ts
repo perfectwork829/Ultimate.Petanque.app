@@ -43,6 +43,15 @@ interface MeetupEntry {
   endTime: string | null;
 }
 
+interface SponsoredChallengeEntry {
+  id: string;
+  title: string;
+  eventDate: string | null;
+  startTime: string | null;
+  endTime: string | null;
+  status: string | null;
+}
+
 function parseDateMs(value?: string | null): number | null {
   if (!value) return null;
   const d = new Date(value);
@@ -71,6 +80,39 @@ function getEndMs(startMs: number, baseDate?: string | null, endTime?: string | 
   if (endMs == null) endMs = startMs + defaultHours * 60 * 60 * 1000;
   if (endMs <= startMs) endMs += 24 * 60 * 60 * 1000;
   return endMs;
+}
+
+function getDateKey(value: any): string | null {
+  if (!value) return null;
+  if (typeof value === 'string') {
+    const m = value.match(/^(\d{4}-\d{2}-\d{2})/);
+    if (m) return m[1];
+  }
+  const d = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(d.getTime())) return null;
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function todayKey(now: Date): string {
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+}
+
+function isSponsoredChallengeLiveNow(challenge: SponsoredChallengeEntry, now: Date): boolean {
+  const status = String(challenge.status || 'upcoming').toLowerCase();
+  if (status === 'completed' || status === 'cancelled' || status === 'canceled') return false;
+
+  const eventDateKey = getDateKey(challenge.eventDate || challenge.startTime);
+  if (!eventDateKey || eventDateKey !== todayKey(now)) return false;
+
+  const startMs = combineDateAndTimeMs(challenge.eventDate, challenge.startTime) ?? parseDateMs(challenge.eventDate);
+  if (startMs == null) return false;
+  const endMs = getEndMs(startMs, challenge.eventDate, challenge.endTime, 3);
+  const nowMs = now.getTime();
+
+  // Active rows should pulse during their scheduled time window. If the backend
+  // has already marked the event active but times are missing, same-day active is enough.
+  if (nowMs >= startMs && nowMs <= endMs) return true;
+  return status === 'active' && nowMs <= endMs;
 }
 
 function isSameLocalDate(a: Date, b: Date): boolean {
@@ -241,6 +283,7 @@ export function useTerrainActivity(): Map<string, TerrainActivityInfo> {
   // Meetups loaded from Supabase — refreshed on mount and screen focus, so newly-created RDVs
   // immediately affect the fire-button live court markers.
   const [terrainMeetupsMap, setTerrainMeetupsMap] = useState<Map<string, MeetupEntry[]>>(new Map());
+  const [sponsoredChallengesMap, setSponsoredChallengesMap] = useState<Map<string, SponsoredChallengeEntry[]>>(new Map());
 
   const loadMeetups = useCallback(async () => {
     try {
@@ -269,13 +312,51 @@ export function useTerrainActivity(): Map<string, TerrainActivityInfo> {
     }
   }, []);
 
+  const loadSponsoredChallenges = useCallback(async () => {
+    try {
+      const supabase = getSupabaseClient();
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      const { data, error } = await supabase
+        .from('sponsored_events')
+        .select('id, title, terrain_id, event_date, start_time, end_time, status')
+        .not('terrain_id', 'is', null)
+        .neq('status', 'cancelled')
+        .gte('event_date', sevenDaysAgo);
+
+      if (error) {
+        console.log('[useTerrainActivity] Error loading sponsored challenges:', error.message);
+        return;
+      }
+
+      const map = new Map<string, SponsoredChallengeEntry[]>();
+      (data || []).forEach((r: any) => {
+        if (!r.terrain_id) return;
+        const arr = map.get(String(r.terrain_id)) || [];
+        arr.push({
+          id: String(r.id),
+          title: r.title || '',
+          eventDate: r.event_date || null,
+          startTime: r.start_time || null,
+          endTime: r.end_time || null,
+          status: r.status || null,
+        });
+        map.set(String(r.terrain_id), arr);
+      });
+      setSponsoredChallengesMap(map);
+    } catch (e) {
+      console.log('[useTerrainActivity] Error loading sponsored challenges:', e);
+    }
+  }, []);
+
   useEffect(() => {
     loadMeetups();
-  }, [loadMeetups]);
+    loadSponsoredChallenges();
+  }, [loadMeetups, loadSponsoredChallenges]);
 
   useFocusEffect(useCallback(() => {
     loadMeetups();
-  }, [loadMeetups]));
+    loadSponsoredChallenges();
+  }, [loadMeetups, loadSponsoredChallenges]));
 
   // Global terrain activity stats from ALL users (community-representative scoring)
   const [globalTerrainStats, setGlobalTerrainStats] = useState<Map<string, GlobalTerrainStats>>(new Map());
@@ -396,13 +477,18 @@ export function useTerrainActivity(): Map<string, TerrainActivityInfo> {
       const todayChallenges = (challenges || []).filter((c: any) =>
         getChallengeTerrainId(c) === String(tr.id) && isTodayLike(getChallengeDateValue(c), now)
       );
-      const hasLiveChallenge = todayChallenges.length > 0;
+
+      const liveSponsoredChallenges = (sponsoredChallengesMap.get(String(tr.id)) || [])
+        .filter(challenge => isSponsoredChallengeLiveNow(challenge, now));
+
+      const liveChallengeCount = todayChallenges.length + liveSponsoredChallenges.length;
+      const hasLiveChallenge = liveChallengeCount > 0;
       if (hasLiveChallenge) {
         isActiveNow = true;
         activeNowReasons.push(
-          todayChallenges.length === 1
-            ? (fr ? 'Defi aujourd\'hui' : 'Challenge today')
-            : `${todayChallenges.length} ${fr ? 'defis aujourd\'hui' : 'challenges today'}`
+          liveChallengeCount === 1
+            ? (fr ? 'Defi en cours' : 'Challenge in progress')
+            : `${liveChallengeCount} ${fr ? 'defis en cours' : 'challenges in progress'}`
         );
       }
 
@@ -543,7 +629,7 @@ export function useTerrainActivity(): Map<string, TerrainActivityInfo> {
     });
 
     return scoreMap;
-  }, [terrains, matches, tournaments, challenges, terrainMeetupsMap, language, globalTerrainStats]);
+  }, [terrains, matches, tournaments, challenges, terrainMeetupsMap, sponsoredChallengesMap, language, globalTerrainStats]);
 
   return terrainActivityMap;
 }

@@ -54,7 +54,7 @@ function SectionCard({ children, title, subtitle, icon, color, delay = 0, requir
   children: React.ReactNode; title: string; subtitle?: string; icon: string; color: string; delay?: number; required?: boolean; style?: ViewStyle | ViewStyle[];
 }) {
   return (
-    <Animated.View entering={FadeInDown.duration(350).delay(delay)} style={[styles.sectionCard, style]}>
+    <View style={[styles.sectionCard, style]}>
       <View style={styles.sectionCardHeader}>
         <View style={[styles.sectionCardIcon, { backgroundColor: color + '15' }]}>
           <MaterialIcons name={icon as any} size={18} color={color} />
@@ -68,7 +68,7 @@ function SectionCard({ children, title, subtitle, icon, color, delay = 0, requir
         </View>
       </View>
       {children}
-    </Animated.View>
+    </View>
   );
 }
 
@@ -406,7 +406,13 @@ export default function NewTournamentScreen() {
       <StepIndicator step={progress.filled} total={progress.total} label={progressLabel} />
 
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-        <ScrollView style={styles.scrollView} contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 120 }]} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" removeClippedSubviews={false}>
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 140 }]}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          removeClippedSubviews={false}
+        >
 
           {/* 1. Nom */}
           <SectionCard title={t('tournament', 'tournamentName')} icon="emoji-events" color={theme.carreauColor} delay={50} required>
@@ -472,9 +478,9 @@ export default function NewTournamentScreen() {
               )}
             </Pressable>
             {!terrainId ? (
-              <Animated.View entering={FadeInDown.duration(250)} style={styles.locationPickerWrapper}>
+              <View style={styles.locationPickerWrapper}>
                 <LocationPicker label={t('tournament', 'tournamentLocation')} value={manualLocation} onChange={setManualLocation} placeholder={t('tournament', 'searchAddress')} required showAddressField />
-              </Animated.View>
+              </View>
             ) : null}
           </SectionCard>
 
@@ -508,7 +514,7 @@ export default function NewTournamentScreen() {
               </View>
             </Pressable>
             {type && CADRAGE_CONFIG[type] ? (
-              <Animated.View entering={FadeIn.duration(250)} style={styles.cadrageInfo}>
+              <View style={styles.cadrageInfo}>
                 <View style={styles.cadrageInfoHeader}><MaterialIcons name="info-outline" size={16} color={theme.tirColor} /><Text style={styles.cadrageInfoTitle}>{CADRAGE_CONFIG[type].description}</Text></View>
                 <View style={styles.cadrageInfoStats}>
                   <View style={styles.cadrageInfoStat}><MaterialIcons name="sports" size={13} color={theme.textMuted} /><Text style={styles.cadrageInfoStatText}>{CADRAGE_CONFIG[type].matches}</Text></View>
@@ -517,7 +523,7 @@ export default function NewTournamentScreen() {
                 <View style={styles.cadrageInfoBullets}>
                   {CADRAGE_CONFIG[type].specifics.map((s, i) => (<View key={i} style={styles.cadrageInfoBullet}><View style={styles.bulletDot} /><Text style={styles.bulletText}>{s}</Text></View>))}
                 </View>
-              </Animated.View>
+              </View>
             ) : null}
           </SectionCard>
 
@@ -953,55 +959,37 @@ const styles = StyleSheet.create({
   scrollView: { flex: 1 },
   scrollContent: { paddingHorizontal: 16, paddingTop: 16 },
 
-  sectionCard: { backgroundColor: theme.surface, borderRadius: theme.borderRadius.lg, padding: 16, marginBottom: 14, position: 'relative', overflow: 'visible', ...theme.shadows.card },
+  sectionCard: { backgroundColor: theme.surface, borderRadius: theme.borderRadius.lg, padding: 16, marginBottom: 16, position: 'relative', overflow: 'visible', ...theme.shadows.card, ...(Platform.OS === 'android' ? { elevation: 0 } : {}) },
   sectionCardHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 14 },
   sectionCardIcon: { width: 32, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
   sectionCardTitle: { fontSize: 14, fontWeight: '700', color: theme.textPrimary },
   sectionCardSubtitle: { fontSize: 11, color: theme.textMuted, marginTop: 1 },
   requiredDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: theme.error },
 
-  // Keep Location, Game Format, Tournament System, and Organizing Club
-  // in the normal document flow. Do not use descending zIndex/elevation here:
-  // on Android, elevated lower cards can paint over the previous animated card
-  // after LocationPicker expands/collapses, making Tournament System look cut
-  // by Organizing Club. These cards stay flat and separated instead.
+  // Keep these cards in simple vertical flow. Android was drawing the
+  // Organizing Club card over the Tournament System card when manual Location
+  // expanded because animated siblings + elevation/zIndex reused cached heights.
   locationSectionCard: {
-    position: 'relative',
-    zIndex: 1,
-    elevation: 0,
+    marginBottom: 18,
     overflow: 'visible',
-    marginBottom: 16,
   },
   locationPickerWrapper: {
     marginTop: 14,
-    marginBottom: 22,
-    position: 'relative',
-    zIndex: 2,
-    elevation: 0,
+    marginBottom: 24,
     overflow: 'visible',
   },
   gameFormatSectionCard: {
-    position: 'relative',
-    zIndex: 0,
-    elevation: 0,
-    overflow: 'hidden',
-    marginBottom: 16,
+    marginBottom: 18,
+    overflow: 'visible',
   },
   cadrageSectionCard: {
-    position: 'relative',
-    zIndex: 0,
-    elevation: 0,
-    overflow: 'hidden',
     marginBottom: 24,
-    paddingBottom: 18,
+    overflow: 'visible',
   },
   organizerClubSectionCard: {
-    position: 'relative',
-    zIndex: 0,
-    elevation: 0,
-    overflow: 'hidden',
     marginTop: 0,
-    marginBottom: 16,
+    marginBottom: 18,
+    overflow: 'visible',
   },
 
   textInput: { backgroundColor: theme.backgroundSecondary, paddingHorizontal: 14, paddingVertical: 13, borderRadius: theme.borderRadius.md, fontSize: 15, color: theme.textPrimary, borderWidth: 1, borderColor: theme.border },
@@ -1034,16 +1022,16 @@ const styles = StyleSheet.create({
   formatCardMeta: { fontSize: 10, color: theme.textMuted },
 
   // Cadrage info (shown below picker)
-  cadrageInfo: { marginTop: 12, padding: 12, backgroundColor: theme.tirColor + '06', borderRadius: theme.borderRadius.md, borderWidth: 1, borderColor: theme.tirColor + '15' },
+  cadrageInfo: { marginTop: 12, marginBottom: 8, padding: 12, backgroundColor: theme.tirColor + '06', borderRadius: theme.borderRadius.md, borderWidth: 1, borderColor: theme.tirColor + '15', overflow: 'visible' },
   cadrageInfoHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
   cadrageInfoTitle: { fontSize: 13, fontWeight: '600', color: theme.tirColor, flex: 1 },
-  cadrageInfoStats: { flexDirection: 'row', gap: 16, marginBottom: 10, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: theme.tirColor + '10' },
+  cadrageInfoStats: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 10, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: theme.tirColor + '10' },
   cadrageInfoStat: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   cadrageInfoStatText: { fontSize: 12, color: theme.textSecondary, fontWeight: '500' },
   cadrageInfoBullets: { gap: 5 },
-  cadrageInfoBullet: { flexDirection: 'row', alignItems: 'center', gap: 7 },
-  bulletDot: { width: 4, height: 4, borderRadius: 2, backgroundColor: theme.tirColor },
-  bulletText: { fontSize: 12, color: theme.textSecondary },
+  cadrageInfoBullet: { flexDirection: 'row', alignItems: 'flex-start', gap: 7, paddingRight: 4 },
+  bulletDot: { width: 4, height: 4, borderRadius: 2, backgroundColor: theme.tirColor, marginTop: 6 },
+  bulletText: { flex: 1, fontSize: 12, lineHeight: 17, color: theme.textSecondary },
 
   // Picker
   pickerButton: { backgroundColor: theme.backgroundSecondary, borderRadius: theme.borderRadius.md, borderWidth: 1, borderColor: theme.border, overflow: 'hidden' },
