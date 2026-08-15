@@ -1,14 +1,31 @@
 /**
- * BadgeUnlockModal — stable unlock popup.
- * Uses normal document flow only: no stacked/absolute CTA, no animated overlap.
+ * BadgeUnlockModal — Fullscreen badge unlock celebration.
+ *
+ * Important Android layout rule:
+ * Keep title, description, XP, and CTA in normal vertical flow.
+ * Do not use absolute/elevation/animated wrappers around the CTA, because they
+ * can visually overlap text and block the button hit area on small screens.
  */
-import React, { useEffect, useRef, useCallback } from 'react';
-import { View, Text, Pressable, StyleSheet, Modal, Platform, ScrollView } from 'react-native';
+import React, { useCallback, useEffect, useRef } from 'react';
+import {
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from '@/services/haptics';
-import { BADGES, getBadgeName, getBadgeDescription, getBadgeCategoryLabel } from '@/services/badgeService';
+import {
+  BADGES,
+  getBadgeCategoryLabel,
+  getBadgeDescription,
+  getBadgeName,
+} from '@/services/badgeService';
 
 interface Props {
   visible: boolean;
@@ -20,16 +37,16 @@ interface Props {
 export default function BadgeUnlockModal({ visible, badgeId, language, onClose }: Props) {
   const badge = BADGES.find(b => b.id === badgeId);
   const insets = useSafeAreaInsets();
-  const hapticPlayedRef = useRef<string | null>(null);
+  const hapticBadgeRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!visible || !badgeId || hapticPlayedRef.current === badgeId) return;
-    hapticPlayedRef.current = badgeId;
+    if (!visible || !badgeId || hapticBadgeRef.current === badgeId) return;
+    hapticBadgeRef.current = badgeId;
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
   }, [visible, badgeId]);
 
   const handleClose = useCallback(() => {
-    hapticPlayedRef.current = null;
+    hapticBadgeRef.current = null;
     onClose();
   }, [onClose]);
 
@@ -38,91 +55,106 @@ export default function BadgeUnlockModal({ visible, badgeId, language, onClose }
   const isFr = language === 'fr';
   const badgeName = getBadgeName(badgeId, language);
   const badgeDescription = getBadgeDescription(badgeId, language);
-  const catLabel = getBadgeCategoryLabel(badge.category, language);
+  const categoryLabel = getBadgeCategoryLabel(badge.category, language);
 
   return (
     <Modal
       visible={visible}
-      transparent={false}
+      transparent
       animationType="fade"
+      statusBarTranslucent
       onRequestClose={handleClose}
-      statusBarTranslucent={false}
     >
-      <LinearGradient
-        colors={['#07111F', '#0F172A', '#07111F']}
-        start={{ x: 0.5, y: 0 }}
-        end={{ x: 0.5, y: 1 }}
-        style={s.screen}
-      >
-        <SafeAreaView style={s.safe}>
-          <ScrollView
-            style={s.scroll}
-            contentContainerStyle={[
-              s.scrollContent,
-              { paddingTop: Math.max(18, insets.top + 12), paddingBottom: Math.max(28, insets.bottom + 22) },
-            ]}
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="always"
-            removeClippedSubviews={false}
-          >
-            <View style={s.card}>
-              <View style={s.unlockPill}>
-                <MaterialIcons name="military-tech" size={15} color="#FCD34D" />
-                <Text style={s.unlockText}>{isFr ? 'BADGE DEBLOQUE !' : 'BADGE UNLOCKED!'}</Text>
-              </View>
+      <View style={styles.overlay}>
+        <LinearGradient
+          colors={['rgba(15,23,42,0.96)', badge.color + '2E', 'rgba(15,23,42,0.97)']}
+          start={{ x: 0.5, y: 0 }}
+          end={{ x: 0.5, y: 1 }}
+          style={styles.gradient}
+        >
+          <SafeAreaView style={styles.safe}>
+            <ScrollView
+              style={styles.scroll}
+              contentContainerStyle={[
+                styles.scrollContent,
+                {
+                  paddingTop: Math.max(22, insets.top + 12),
+                  paddingBottom: Math.max(28, insets.bottom + 22),
+                },
+              ]}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              removeClippedSubviews={false}
+            >
+              <View style={styles.content}>
+                <View style={styles.unlockPill} pointerEvents="none">
+                  <Text style={styles.unlockText}>{isFr ? 'BADGE DEBLOQUE !' : 'BADGE UNLOCKED!'}</Text>
+                </View>
 
-              <View style={[s.iconOuter, { borderColor: badge.color + '70', backgroundColor: badge.color + '18' }]}> 
-                <View style={[s.iconMiddle, { borderColor: badge.color + '70' }]}> 
-                  <View style={[s.iconInner, { backgroundColor: badge.color }]}> 
-                    <MaterialIcons name={badge.icon as any} size={40} color="#FFF" />
+                <View style={styles.iconArea} pointerEvents="none">
+                  <View style={[styles.outerRing, { borderColor: badge.color + '75' }]} />
+                  <View style={[styles.middleRing, { borderColor: badge.color + '45', backgroundColor: badge.color + '18' }]}> 
+                    <View style={[styles.iconCircle, { backgroundColor: badge.color }]}> 
+                      <MaterialIcons name={badge.icon as any} size={42} color="#FFF" />
+                    </View>
                   </View>
                 </View>
-              </View>
 
-              <Text style={[s.badgeName, { color: badge.color }]} numberOfLines={3} adjustsFontSizeToFit minimumFontScale={0.72}>
-                {badgeName}
-              </Text>
-
-              <View style={[s.catChip, { backgroundColor: badge.color + '18', borderColor: badge.color + '45' }]}> 
-                <Text style={[s.catChipText, { color: badge.color }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>
-                  {catLabel}
+                <Text
+                  style={[styles.badgeName, { color: badge.color }]}
+                  numberOfLines={3}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.72}
+                >
+                  {badgeName}
                 </Text>
-              </View>
 
-              <View style={s.descriptionBox}>
-                <Text style={s.badgeDesc}>{badgeDescription}</Text>
-              </View>
+                <View style={[styles.categoryChip, { backgroundColor: badge.color + '18', borderColor: badge.color + '38' }]}>
+                  <Text
+                    style={[styles.categoryText, { color: badge.color }]}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.78}
+                  >
+                    {categoryLabel}
+                  </Text>
+                </View>
 
-              <View style={[s.xpReward, { borderColor: badge.color + '35' }]}> 
-                <MaterialIcons name="bolt" size={21} color="#FCD34D" />
-                <Text style={s.xpRewardText}>+{badge.xpReward} XP</Text>
-              </View>
+                <Text style={styles.description}>{badgeDescription}</Text>
 
-              <Pressable
-                style={({ pressed }) => [
-                  s.closeBtn,
-                  { backgroundColor: badge.color },
-                  pressed && { opacity: 0.86 },
-                ]}
-                onPress={handleClose}
-                hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}
-                android_disableSound={false}
-              >
-                <MaterialIcons name="celebration" size={20} color="#FFF" />
-                <Text style={s.closeBtnText}>{isFr ? 'Super !' : 'Awesome!'}</Text>
-              </Pressable>
-            </View>
-          </ScrollView>
-        </SafeAreaView>
-      </LinearGradient>
+                <View style={[styles.xpChip, { borderColor: badge.color + '30' }]} pointerEvents="none">
+                  <MaterialIcons name="bolt" size={22} color="#FCD34D" />
+                  <Text style={styles.xpText}>+{badge.xpReward} XP</Text>
+                </View>
+
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.closeButton,
+                    { backgroundColor: badge.color },
+                    pressed && styles.closeButtonPressed,
+                  ]}
+                  onPress={handleClose}
+                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                >
+                  <MaterialIcons name="celebration" size={20} color="#FFF" />
+                  <Text style={styles.closeText}>{isFr ? 'Super !' : 'Awesome!'}</Text>
+                </Pressable>
+              </View>
+            </ScrollView>
+          </SafeAreaView>
+        </LinearGradient>
+      </View>
     </Modal>
   );
 }
 
-const s = StyleSheet.create({
-  screen: {
+const styles = StyleSheet.create({
+  overlay: {
     flex: 1,
-    backgroundColor: '#07111F',
+    backgroundColor: 'rgba(15,23,42,0.96)',
+  },
+  gradient: {
+    flex: 1,
   },
   safe: {
     flex: 1,
@@ -134,130 +166,119 @@ const s = StyleSheet.create({
     flexGrow: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 18,
+    paddingHorizontal: 20,
   },
-  card: {
+  content: {
     width: '100%',
-    maxWidth: 370,
+    maxWidth: 360,
     alignItems: 'center',
-    paddingHorizontal: 18,
-    paddingTop: 20,
-    paddingBottom: 18,
-    borderRadius: 28,
-    backgroundColor: 'rgba(15, 23, 42, 0.96)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
-    overflow: 'visible',
-    position: 'relative',
   },
   unlockPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
     alignSelf: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 8,
+    paddingHorizontal: 18,
+    paddingVertical: 9,
     borderRadius: 999,
-    backgroundColor: 'rgba(245, 158, 11, 0.16)',
+    backgroundColor: 'rgba(245,158,11,0.14)',
     borderWidth: 1,
-    borderColor: 'rgba(245, 158, 11, 0.30)',
-    marginBottom: 22,
+    borderColor: 'rgba(245,158,11,0.30)',
+    marginBottom: 34,
   },
   unlockText: {
+    color: '#FCD34D',
     fontSize: 12,
     fontWeight: '900',
-    color: '#FCD34D',
-    letterSpacing: 1,
+    letterSpacing: 1.3,
+    textAlign: 'center',
     includeFontPadding: false,
   },
-  iconOuter: {
-    width: 128,
-    height: 128,
-    borderRadius: 64,
-    borderWidth: 2,
+  iconArea: {
+    width: 142,
+    height: 142,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 18,
+    marginBottom: 26,
+    overflow: 'visible',
   },
-  iconMiddle: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
+  outerRing: {
+    position: 'absolute',
+    width: 140,
+    height: 140,
+    borderRadius: 70,
+    borderWidth: 2,
+    opacity: 0.82,
+  },
+  middleRing: {
+    width: 112,
+    height: 112,
+    borderRadius: 56,
     borderWidth: 3,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  iconInner: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
+  iconCircle: {
+    width: 76,
+    height: 76,
+    borderRadius: 38,
     alignItems: 'center',
     justifyContent: 'center',
     ...Platform.select({
-      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.22, shadowRadius: 14 },
+      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.25, shadowRadius: 14 },
       android: { elevation: 0 },
+      default: {},
     }),
   },
   badgeName: {
     width: '100%',
-    fontSize: 24,
+    fontSize: 25,
+    lineHeight: 31,
     fontWeight: '900',
     textAlign: 'center',
-    lineHeight: 30,
-    marginBottom: 10,
+    marginBottom: 12,
     includeFontPadding: false,
   },
-  catChip: {
+  categoryChip: {
     maxWidth: '100%',
     paddingHorizontal: 14,
     paddingVertical: 6,
     borderRadius: 999,
     borderWidth: 1,
-    marginBottom: 16,
+    marginBottom: 18,
   },
-  catChipText: {
+  categoryText: {
     fontSize: 12,
     fontWeight: '800',
-    letterSpacing: 0.2,
     textAlign: 'center',
     includeFontPadding: false,
   },
-  descriptionBox: {
-    width: '100%',
-    minHeight: 54,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 8,
-    marginBottom: 18,
-  },
-  badgeDesc: {
+  description: {
     width: '100%',
     fontSize: 15,
     lineHeight: 23,
-    color: 'rgba(255,255,255,0.86)',
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.78)',
     textAlign: 'center',
+    marginBottom: 22,
     includeFontPadding: true,
   },
-  xpReward: {
+  xpChip: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
+    gap: 9,
     paddingHorizontal: 22,
-    paddingVertical: 11,
+    paddingVertical: 12,
     borderRadius: 999,
-    backgroundColor: 'rgba(245, 158, 11, 0.14)',
     borderWidth: 1,
-    marginBottom: 22,
+    backgroundColor: 'rgba(245,158,11,0.14)',
+    marginBottom: 26,
   },
-  xpRewardText: {
-    fontSize: 20,
+  xpText: {
+    fontSize: 21,
     fontWeight: '900',
     color: '#FCD34D',
     includeFontPadding: false,
   },
-  closeBtn: {
+  closeButton: {
     width: '100%',
     minHeight: 58,
     flexDirection: 'row',
@@ -267,14 +288,18 @@ const s = StyleSheet.create({
     paddingHorizontal: 18,
     paddingVertical: 16,
     borderRadius: 18,
-    position: 'relative',
-    zIndex: 10,
+    zIndex: 1,
     elevation: 0,
   },
-  closeBtnText: {
+  closeButtonPressed: {
+    opacity: 0.86,
+    transform: [{ scale: 0.985 }],
+  },
+  closeText: {
+    color: '#FFF',
     fontSize: 18,
     fontWeight: '900',
-    color: '#FFF',
+    textAlign: 'center',
     includeFontPadding: false,
   },
 });

@@ -1512,7 +1512,7 @@ function getEffectiveChallengeMapStatus(event: any, now: Date = new Date()): 'up
   const eventDate = event?.eventDate || event?.event_date || event?.date;
   const startDate = getMapDateTime(eventDate, event?.startTime || event?.start_time);
   const endDate = getMapDateTime(eventDate, event?.endTime || event?.end_time);
-  const dateOnly = getMapDateValue(eventDate);
+  const dateOnly = getMapDateValue(event?.startTime || event?.start_time) || getMapDateValue(eventDate);
 
   if (endDate && now.getTime() > endDate.getTime()) return 'completed';
   if (startDate && endDate && now.getTime() >= startDate.getTime() && now.getTime() <= endDate.getTime()) return 'active';

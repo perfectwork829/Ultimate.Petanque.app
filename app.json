@@ -5,7 +5,7 @@
     "version": "1.15.0",
     "orientation": "portrait",
     "icon": "./assets/images/app-logo.png",
-    "scheme": "onspaceapp",
+    "scheme": "ultimatepetanque",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": false,
     "ios": {
@@ -57,7 +57,7 @@
           "autoVerify": true,
           "data": [
             {
-              "scheme": "onspaceapp",
+              "scheme": "ultimatepetanque",
               "host": "*",
               "pathPrefix": "/auth"
             },
@@ -121,7 +121,8 @@
           "cameraPermission": "Ultimate Petanque utilise la camera pour scanner les QR codes."
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      "@react-native-google-signin/google-signin"
     ],
     "react-native-google-mobile-ads": {
       "android_app_id": "ca-app-pub-3940256099942544~3347511713",

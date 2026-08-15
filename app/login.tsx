@@ -22,6 +22,7 @@ import {
   GOOGLE_PROVIDER_NOT_ENABLED,
   GOOGLE_DISALLOWED_USER_AGENT,
   GOOGLE_EXPO_GO_REQUIRES_DEV_BUILD,
+  GOOGLE_NATIVE_SIGNIN_PACKAGE_MISSING,
 } from '@/template/auth';
 import theme from '@/constants/theme';
 import {
@@ -212,7 +213,6 @@ export default function LoginScreen() {
   const [showPolicyModal, setShowPolicyModal] = useState(false);
   const [policyTitle, setPolicyTitle] = useState('');
   const [policyContent, setPolicyContent] = useState('');
-  const [showGooglePolicyNotice, setShowGooglePolicyNotice] = useState(false);
 
 
   const resetForm = () => {
@@ -244,9 +244,9 @@ export default function LoginScreen() {
     setShowPolicyModal(true);
   };
 
-  const startGoogleLogin = async () => {
+  const handleGoogleLogin = async () => {
     // Note: Google OAuth cannot pre-check email before auth flow,
-    // device binding is enforced via post-login check in canLoginOnDevice.
+    // device binding is enforced via post-login check in canLoginOnDevice
     const { error } = await signInWithGoogle();
     if (error) {
       let message = error;
@@ -262,21 +262,13 @@ export default function LoginScreen() {
         message = t('login', 'googleDisallowedUserAgent');
       } else if (error === GOOGLE_EXPO_GO_REQUIRES_DEV_BUILD) {
         message = t('login', 'googleExpoGoNotSupported');
+      } else if (error === GOOGLE_NATIVE_SIGNIN_PACKAGE_MISSING) {
+        message = t('login', 'googleNativePackageMissing');
+      } else if (error.toLowerCase().includes('missing expo_public_google_web_client_id')) {
+        message = t('login', 'googleWebClientIdMissing');
       }
       showAlert(t('login', 'googleError'), message);
     }
-  };
-
-  const handleGoogleLogin = () => {
-    // Google's account chooser shows policy links controlled by Google Cloud OAuth settings.
-    // Keep app policy access in-app before opening the external Google OAuth page,
-    // so users never need to rely on those external consent-screen links.
-    setShowGooglePolicyNotice(true);
-  };
-
-  const handleContinueGoogleLogin = async () => {
-    setShowGooglePolicyNotice(false);
-    await startGoogleLogin();
   };
 
   const handleLogin = async () => {
@@ -567,20 +559,6 @@ export default function LoginScreen() {
                 <View style={styles.dividerLine} />
               </View>
 
-              <View style={styles.googlePolicyNotice}>
-                <MaterialIcons name="policy" size={16} color={theme.primary} />
-                <Text style={styles.googlePolicyText}>
-                  {language === 'fr' ? 'Avant Google, consultez les documents dans l’application :' : 'Before Google sign-in, read the in-app documents:'}
-                </Text>
-                <Pressable onPress={() => openPolicy('terms')} hitSlop={8}>
-                  <Text style={styles.googlePolicyLink}>{t('terms', 'title')}</Text>
-                </Pressable>
-                <Text style={styles.googlePolicyDot}>•</Text>
-                <Pressable onPress={() => openPolicy('privacy')} hitSlop={8}>
-                  <Text style={styles.googlePolicyLink}>{t('privacy', 'title')}</Text>
-                </Pressable>
-              </View>
-
               {/* Google Sign-In */}
               <Pressable
                 testID="login-google-button"
@@ -855,17 +833,17 @@ export default function LoginScreen() {
 
           {/* Footer */}
           <Animated.View entering={FadeInDown.duration(500).delay(300)} style={styles.footer}>
-            <Pressable onPress={() => openPolicy('terms')} hitSlop={8}>
+            <Pressable onPress={() => openPolicy('terms')}>
               <Text style={styles.footerText}>
                 {t('login', 'termsText')}
               </Text>
             </Pressable>
             <View style={styles.footerLinks}>
-              <Pressable onPress={() => openPolicy('terms')} hitSlop={8}>
+              <Pressable onPress={() => openPolicy('terms')}>
                 <Text style={styles.footerLink}>{t('terms', 'title')}</Text>
               </Pressable>
               <Text style={styles.footerSeparator}>•</Text>
-              <Pressable onPress={() => openPolicy('privacy')} hitSlop={8}>
+              <Pressable onPress={() => openPolicy('privacy')}>
                 <Text style={styles.footerLink}>{t('privacy', 'title')}</Text>
               </Pressable>
             </View>
@@ -874,59 +852,9 @@ export default function LoginScreen() {
       </KeyboardAvoidingView>
 
       <Modal
-        visible={showGooglePolicyNotice}
-        transparent
-        animationType="fade"
-        presentationStyle="overFullScreen"
-        statusBarTranslucent={Platform.OS === 'android'}
-        onRequestClose={() => setShowGooglePolicyNotice(false)}
-      >
-        <View style={styles.googlePolicyModalOverlay}>
-          <View style={styles.googlePolicyModalSheet}>
-            <View style={styles.googlePolicyModalIcon}>
-              <MaterialIcons name="gpp-good" size={26} color="#FFF" />
-            </View>
-            <Text style={styles.googlePolicyModalTitle}>
-              {language === 'fr' ? 'Documents légaux' : 'Legal documents'}
-            </Text>
-            <Text style={styles.googlePolicyModalText}>
-              {language === 'fr'
-                ? 'Les liens affichés par Google sont configurés dans la console Google. Vous pouvez consulter les CGU et la politique de confidentialité directement ici avant de continuer.'
-                : 'The links shown by Google are configured in Google Cloud. You can read the Terms and Privacy Policy directly here before continuing.'}
-            </Text>
-            <View style={styles.googlePolicyModalLinks}>
-              <Pressable style={styles.googlePolicyModalLinkBtn} onPress={() => openPolicy('terms')}>
-                <MaterialIcons name="description" size={16} color={theme.primary} />
-                <Text style={styles.googlePolicyModalLinkText}>{t('terms', 'title')}</Text>
-              </Pressable>
-              <Pressable style={styles.googlePolicyModalLinkBtn} onPress={() => openPolicy('privacy')}>
-                <MaterialIcons name="privacy-tip" size={16} color={theme.primary} />
-                <Text style={styles.googlePolicyModalLinkText}>{t('privacy', 'title')}</Text>
-              </Pressable>
-            </View>
-            <Pressable style={styles.googlePolicyContinueBtn} onPress={handleContinueGoogleLogin} disabled={operationLoading}>
-              {operationLoading ? <ActivityIndicator color="#FFF" /> : (
-                <>
-                  <MaterialIcons name="login" size={18} color="#FFF" />
-                  <Text style={styles.googlePolicyContinueText}>
-                    {language === 'fr' ? 'Continuer avec Google' : 'Continue with Google'}
-                  </Text>
-                </>
-              )}
-            </Pressable>
-            <Pressable style={styles.googlePolicyCancelBtn} onPress={() => setShowGooglePolicyNotice(false)}>
-              <Text style={styles.googlePolicyCancelText}>{t('common', 'cancel') || (language === 'fr' ? 'Annuler' : 'Cancel')}</Text>
-            </Pressable>
-          </View>
-        </View>
-      </Modal>
-
-      <Modal
         visible={showPolicyModal}
         transparent
         animationType="slide"
-        presentationStyle="overFullScreen"
-        statusBarTranslucent={Platform.OS === 'android'}
         onRequestClose={() => setShowPolicyModal(false)}
       >
         <View style={styles.policyModalOverlay}>
@@ -1184,117 +1112,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: theme.textPrimary,
-  },
-  googlePolicyNotice: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: 6,
-    backgroundColor: theme.primary + '10',
-    borderWidth: 1,
-    borderColor: theme.primary + '25',
-    borderRadius: theme.borderRadius.md,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    marginTop: 4,
-  },
-  googlePolicyText: {
-    fontSize: 12,
-    color: theme.textSecondary,
-    flexShrink: 1,
-  },
-  googlePolicyLink: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: theme.primary,
-    textDecorationLine: 'underline',
-  },
-  googlePolicyDot: {
-    fontSize: 12,
-    color: theme.textMuted,
-  },
-  googlePolicyModalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.72)',
-    justifyContent: 'center',
-    padding: 20,
-  },
-  googlePolicyModalSheet: {
-    backgroundColor: theme.surface,
-    borderRadius: 24,
-    padding: 20,
-    alignItems: 'center',
-    ...theme.shadows.card,
-  },
-  googlePolicyModalIcon: {
-    width: 56,
-    height: 56,
-    borderRadius: 18,
-    backgroundColor: theme.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 12,
-  },
-  googlePolicyModalTitle: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: theme.textPrimary,
-    textAlign: 'center',
-  },
-  googlePolicyModalText: {
-    fontSize: 14,
-    lineHeight: 20,
-    color: theme.textSecondary,
-    textAlign: 'center',
-    marginTop: 8,
-  },
-  googlePolicyModalLinks: {
-    width: '100%',
-    gap: 10,
-    marginTop: 18,
-  },
-  googlePolicyModalLinkBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    backgroundColor: theme.primary + '10',
-    borderWidth: 1,
-    borderColor: theme.primary + '25',
-    borderRadius: theme.borderRadius.md,
-    paddingHorizontal: 14,
-    paddingVertical: 13,
-  },
-  googlePolicyModalLinkText: {
-    flex: 1,
-    fontSize: 14,
-    fontWeight: '700',
-    color: theme.primary,
-  },
-  googlePolicyContinueBtn: {
-    width: '100%',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    backgroundColor: theme.primary,
-    borderRadius: theme.borderRadius.md,
-    paddingVertical: 15,
-    marginTop: 18,
-  },
-  googlePolicyContinueText: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: '#FFF',
-  },
-  googlePolicyCancelBtn: {
-    paddingVertical: 12,
-    paddingHorizontal: 18,
-    marginTop: 6,
-  },
-  googlePolicyCancelText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: theme.textSecondary,
   },
   policyModalOverlay: {
     flex: 1,

@@ -15,6 +15,11 @@ import { useLanguage } from '@/hooks/useLanguage';
 import { getSupabaseClient } from '@/template';
 import { useFocusEffect } from '@react-navigation/native';
 
+// Habitual green pulse should match the current day and roughly the same play hour.
+// Use a two-hour window because stored activity can be shifted by timezone / date-picker conversion,
+// e.g. an 18h local activity can appear as 16h in the weekly activity chart.
+const HABITUAL_HOUR_TOLERANCE = 2;
+
 export interface TerrainActivityInfo {
   score: number;
   matchCount: number;
@@ -29,7 +34,7 @@ export interface TerrainActivityInfo {
   activeNowLabel: string;
   /** Score based on habitual activity at this day-of-week + hour */
   habitualScore: number;
-  /** True only when configured weekly/habitual activity matches the current weekday + hour window. */
+  /** True when a configured weekly slot or recorded activity matches the current weekday + hour window. */
   hasActivityToday?: boolean;
   hasHabitualNow?: boolean;
   hasLiveMeetup?: boolean;
@@ -49,6 +54,14 @@ interface SponsoredChallengeEntry {
   eventDate: string | null;
   startTime: string | null;
   endTime: string | null;
+  status: string | null;
+}
+
+interface TerrainChallengeEntry {
+  id: string;
+  date: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
   status: string | null;
 }
 
@@ -97,11 +110,61 @@ function todayKey(now: Date): string {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 }
 
+
+function dateKeyToLocalNoon(key: string): Date | null {
+  const m = key.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return null;
+  return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 12, 0, 0, 0);
+}
+
+function isTomorrowKey(dateKey: string | null, now: Date): boolean {
+  if (!dateKey) return false;
+  const d = dateKeyToLocalNoon(dateKey);
+  if (!d) return false;
+  const tomorrow = new Date(now);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  return isSameLocalDate(d, tomorrow);
+}
+
+function getRegularChallengeActivityDateKey(challenge: any, now?: Date): string | null {
+  const createdKey = getDateKey(challenge?.createdAt ?? challenge?.created_at);
+  const updatedKey = getDateKey(challenge?.updatedAt ?? challenge?.updated_at);
+  const explicitKey = getDateKey(challenge?.activityDate ?? challenge?.activity_date);
+  const scheduledKey = getDateKey(challenge?.date ?? challenge?.eventDate ?? challenge?.event_date);
+
+  if (explicitKey) return explicitKey;
+
+  // Regular court challenges are activity records, not future events. If the
+  // saved date slipped to tomorrow because of UTC/native date conversion, keep
+  // the activity on the day it was created/played.
+  if (now && scheduledKey && isTomorrowKey(scheduledKey, now)) {
+    if (createdKey && createdKey === todayKey(now)) return createdKey;
+    if (updatedKey && updatedKey === todayKey(now)) return updatedKey;
+  }
+
+  return scheduledKey || createdKey || updatedKey;
+}
+
+function getSponsoredChallengeActivityDateKey(challenge: any): string | null {
+  // start_time is the most reliable scheduled moment. event_date can be shifted
+  // by native date picker / UTC conversion, so use it only as fallback.
+  return getDateKey(challenge?.startTime ?? challenge?.start_time) ||
+    getDateKey(challenge?.eventDate ?? challenge?.event_date) ||
+    getDateKey(challenge?.createdAt ?? challenge?.created_at);
+}
+
+function isRegularChallengeLiveToday(challenge: any, now: Date): boolean {
+  const status = String(challenge?.status || '').toLowerCase();
+  if (status.includes('cancel')) return false;
+  const key = getRegularChallengeActivityDateKey(challenge, now);
+  return key === todayKey(now);
+}
+
 function isSponsoredChallengeLiveNow(challenge: SponsoredChallengeEntry, now: Date): boolean {
   const status = String(challenge.status || 'upcoming').toLowerCase();
   if (status === 'completed' || status === 'cancelled' || status === 'canceled') return false;
 
-  const eventDateKey = getDateKey(challenge.eventDate || challenge.startTime);
+  const eventDateKey = getSponsoredChallengeActivityDateKey(challenge);
   if (!eventDateKey || eventDateKey !== todayKey(now)) return false;
 
   const startMs = combineDateAndTimeMs(challenge.eventDate, challenge.startTime) ?? parseDateMs(challenge.eventDate);
@@ -125,6 +188,27 @@ function isTodayLike(dateValue: string | null | undefined, now: Date): boolean {
   const ms = parseDateMs(dateValue);
   if (ms == null) return false;
   return isSameLocalDate(new Date(ms), now);
+}
+
+function parseActivityDateParts(value: any): { date: Date; hasExplicitHour: boolean } | null {
+  if (!value) return null;
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : { date: value, hasExplicitHour: true };
+  }
+
+  const text = String(value).trim();
+
+  // Date-only values must stay on the local calendar day, but they do not
+  // prove a habitual hour. Use local noon only for weekday counting.
+  const dateOnly = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (dateOnly) {
+    const d = new Date(Number(dateOnly[1]), Number(dateOnly[2]) - 1, Number(dateOnly[3]), 12, 0, 0, 0);
+    return Number.isNaN(d.getTime()) ? null : { date: d, hasExplicitHour: false };
+  }
+
+  const hasExplicitHour = /(?:T|\s)\d{1,2}:\d{2}/.test(text);
+  const d = new Date(text);
+  return Number.isNaN(d.getTime()) ? null : { date: d, hasExplicitHour };
 }
 
 function parseHourValue(value: any): number | null {
@@ -236,14 +320,14 @@ function terrainWeeklyActivityMatchesNow(terrain: any, now: Date): boolean {
 
     const hours = source.hours ?? source.hourSlots ?? source.hour_slots;
     if (Array.isArray(hours)) {
-      return hours.some((h: any) => hourInWindow(currentHour, parseHourValue(h), parseHourValue(h), 1));
+      return hours.some((h: any) => hourInWindow(currentHour, parseHourValue(h), parseHourValue(h), HABITUAL_HOUR_TOLERANCE));
     }
 
     const startHour = parseHourValue(source.startHour ?? source.start_hour ?? source.startTime ?? source.start_time ?? source.from);
     const endHour = parseHourValue(source.endHour ?? source.end_hour ?? source.endTime ?? source.end_time ?? source.to);
     const hour = parseHourValue(source.hour ?? source.time ?? source.label);
 
-    return hourInWindow(currentHour, startHour ?? hour, endHour ?? hour, 1);
+    return hourInWindow(currentHour, startHour ?? hour, endHour ?? hour, HABITUAL_HOUR_TOLERANCE);
   });
 }
 
@@ -283,6 +367,7 @@ export function useTerrainActivity(): Map<string, TerrainActivityInfo> {
   // Meetups loaded from Supabase — refreshed on mount and screen focus, so newly-created RDVs
   // immediately affect the fire-button live court markers.
   const [terrainMeetupsMap, setTerrainMeetupsMap] = useState<Map<string, MeetupEntry[]>>(new Map());
+  const [terrainChallengesMap, setTerrainChallengesMap] = useState<Map<string, TerrainChallengeEntry[]>>(new Map());
   const [sponsoredChallengesMap, setSponsoredChallengesMap] = useState<Map<string, SponsoredChallengeEntry[]>>(new Map());
 
   const loadMeetups = useCallback(async () => {
@@ -312,13 +397,49 @@ export function useTerrainActivity(): Map<string, TerrainActivityInfo> {
     }
   }, []);
 
+
+  const loadTerrainChallenges = useCallback(async () => {
+    try {
+      const supabase = getSupabaseClient();
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      const { data, error } = await supabase
+        .from('challenges')
+        .select('id, terrain_id, date, created_at, updated_at')
+        .not('terrain_id', 'is', null)
+        .or(`date.gte.${sevenDaysAgo},created_at.gte.${sevenDaysAgo},updated_at.gte.${sevenDaysAgo}`);
+
+      if (error) {
+        console.log('[useTerrainActivity] Error loading terrain challenges:', error.message);
+        return;
+      }
+
+      const map = new Map<string, TerrainChallengeEntry[]>();
+      (data || []).forEach((r: any) => {
+        if (!r.terrain_id) return;
+        const terrainId = String(r.terrain_id);
+        const arr = map.get(terrainId) || [];
+        arr.push({
+          id: String(r.id),
+          date: r.date || null,
+          createdAt: r.created_at || null,
+          updatedAt: r.updated_at || null,
+          status: null,
+        });
+        map.set(terrainId, arr);
+      });
+      setTerrainChallengesMap(map);
+    } catch (e) {
+      console.log('[useTerrainActivity] Error loading terrain challenges:', e);
+    }
+  }, []);
+
   const loadSponsoredChallenges = useCallback(async () => {
     try {
       const supabase = getSupabaseClient();
       const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
       const { data, error } = await supabase
         .from('sponsored_events')
-        .select('id, title, terrain_id, event_date, start_time, end_time, status')
+        .select('id, title, terrain_id, event_date, start_time, end_time, status, created_at')
         .not('terrain_id', 'is', null)
         .neq('status', 'cancelled')
         .gte('event_date', sevenDaysAgo);
@@ -338,7 +459,7 @@ export function useTerrainActivity(): Map<string, TerrainActivityInfo> {
           eventDate: r.event_date || null,
           startTime: r.start_time || null,
           endTime: r.end_time || null,
-          status: r.status || null,
+          status: null,
         });
         map.set(String(r.terrain_id), arr);
       });
@@ -350,13 +471,15 @@ export function useTerrainActivity(): Map<string, TerrainActivityInfo> {
 
   useEffect(() => {
     loadMeetups();
+    loadTerrainChallenges();
     loadSponsoredChallenges();
-  }, [loadMeetups, loadSponsoredChallenges]);
+  }, [loadMeetups, loadTerrainChallenges, loadSponsoredChallenges]);
 
   useFocusEffect(useCallback(() => {
     loadMeetups();
+    loadTerrainChallenges();
     loadSponsoredChallenges();
-  }, [loadMeetups, loadSponsoredChallenges]));
+  }, [loadMeetups, loadTerrainChallenges, loadSponsoredChallenges]));
 
   // Global terrain activity stats from ALL users (community-representative scoring)
   const [globalTerrainStats, setGlobalTerrainStats] = useState<Map<string, GlobalTerrainStats>>(new Map());
@@ -474,9 +597,19 @@ export function useTerrainActivity(): Map<string, TerrainActivityInfo> {
       }
 
       // 1d. Challenges at this terrain today are considered live court activity.
-      const todayChallenges = (challenges || []).filter((c: any) =>
-        getChallengeTerrainId(c) === String(tr.id) && isTodayLike(getChallengeDateValue(c), now)
-      );
+      // Include both AppContext rows and fresh Supabase rows, because a newly
+      // created challenge can exist in DB before AppContext has refreshed.
+      const seenLiveChallengeIds = new Set<string>();
+      const todayChallenges = [
+        ...(terrainChallengesMap.get(String(tr.id)) || []),
+        ...(challenges || []).filter((c: any) => getChallengeTerrainId(c) === String(tr.id)),
+      ].filter((c: any) => {
+        if (!isRegularChallengeLiveToday(c, now)) return false;
+        const challengeId = String(c?.id || '');
+        if (challengeId && seenLiveChallengeIds.has(challengeId)) return false;
+        if (challengeId) seenLiveChallengeIds.add(challengeId);
+        return true;
+      });
 
       const liveSponsoredChallenges = (sponsoredChallengesMap.get(String(tr.id)) || [])
         .filter(challenge => isSponsoredChallengeLiveNow(challenge, now));
@@ -502,27 +635,37 @@ export function useTerrainActivity(): Map<string, TerrainActivityInfo> {
       // Count how many times activity was recorded at the same day-of-week within ±2 hours
       let sameDayHourCount = 0;
       let sameDayCount = 0;
-      terrainMatches.forEach(m => {
-        const d = new Date(m.date);
-        if (Number.isNaN(d.getTime())) return;
-        if (d.getDay() === currentDow) {
-          sameDayCount++;
-          const h = d.getHours();
-          if (Math.abs(h - currentHour) <= 2) sameDayHourCount++;
-        }
+      const registerRecordedHabitualActivity = (dateValue: any) => {
+        const parsed = parseActivityDateParts(dateValue);
+        if (!parsed) return;
+        const { date, hasExplicitHour } = parsed;
+        if (date.getDay() !== currentDow) return;
+
+        sameDayCount++;
+
+        // Green habitual pulse is hour-sensitive. A date-only record can support
+        // the weekday label, but it must not make a court pulse all day.
+        if (!hasExplicitHour) return;
+
+        const h = date.getHours();
+        if (Math.abs(h - currentHour) <= HABITUAL_HOUR_TOLERANCE) sameDayHourCount++;
+      };
+
+      terrainMatches.forEach((m: any) => {
+        registerRecordedHabitualActivity(m.date ?? m.playedAt ?? m.played_at ?? m.createdAt ?? m.created_at);
       });
 
       (challenges || []).forEach((c: any) => {
         if (getChallengeTerrainId(c) !== String(tr.id)) return;
-        const challengeDate = getChallengeDateValue(c);
-        if (!challengeDate) return;
-        const d = new Date(challengeDate);
-        if (Number.isNaN(d.getTime())) return;
-        if (d.getDay() === currentDow) {
-          sameDayCount++;
-          const h = d.getHours();
-          if (Math.abs(h - currentHour) <= 2) sameDayHourCount++;
-        }
+        registerRecordedHabitualActivity(c.activityDate ?? c.activity_date ?? c.date ?? c.eventDate ?? c.event_date ?? c.createdAt ?? c.created_at);
+      });
+
+      (terrainChallengesMap.get(String(tr.id)) || []).forEach((c: any) => {
+        registerRecordedHabitualActivity(c.date ?? c.createdAt ?? c.updatedAt);
+      });
+
+      (sponsoredChallengesMap.get(String(tr.id)) || []).forEach((c: any) => {
+        registerRecordedHabitualActivity(c.startTime ?? c.eventDate);
       });
 
       // Global community stats for labels/ranking only.
@@ -530,22 +673,29 @@ export function useTerrainActivity(): Map<string, TerrainActivityInfo> {
       const globalPeakSameDayAndHour = Boolean(
         gStats &&
         gStats.peakDow === currentDow &&
-        Math.abs(gStats.peakHour - currentHour) <= 1 &&
+        Math.abs(gStats.peakHour - currentHour) <= HABITUAL_HOUR_TOLERANCE &&
         gStats.peakHourCount > 0
       );
       const weeklyActivityNow = terrainWeeklyActivityMatchesNow(tr, now);
+      const recordedActivitySameDayAndHour = sameDayHourCount > 0;
 
-      // Green habitual pulse must be STRICT: it should come from the court's
-      // configured weekly/habitual activity and must match the current weekday
-      // AND current hour window. Historical matches/challenges/global stats are
-      // useful for ranking text, but they must not make a court pulse green.
-      const hasActivityToday = Boolean(weeklyActivityNow);
-      const hasHabitualNow = Boolean(weeklyActivityNow);
+      // Green habitual pulse is strict, but it must support every source that
+      // feeds the court “Weekly Activity” UI:
+      // 1) configured weekly/habitual slots,
+      // 2) real recorded activities such as “1 game(s) Thu - 13h”, and
+      // 3) community peak stats, but ONLY when the peak day and peak hour match
+      //    the current day/hour window.
+      // General totals and date-only records still do NOT activate green pulse.
+      const hasActivityToday = Boolean(weeklyActivityNow || recordedActivitySameDayAndHour || globalPeakSameDayAndHour);
+      const hasHabitualNow = Boolean(weeklyActivityNow || recordedActivitySameDayAndHour || globalPeakSameDayAndHour);
 
-      // Habitual score for the green pulse. Keep this strict as well, otherwise
-      // courts with old Tuesday activity can still appear when searching Tuesday
-      // afternoon even if their recorded weekly activity was in the morning.
-      const habitualScore = weeklyActivityNow ? 40 : 0;
+      const habitualScore = weeklyActivityNow
+        ? 45
+        : recordedActivitySameDayAndHour
+          ? Math.min(35 + sameDayHourCount * 5, 55)
+          : globalPeakSameDayAndHour
+            ? Math.min(35 + (gStats?.peakHourCount || 1) * 5, 55)
+            : 0;
 
       // ========================================
       // 3) GENERAL SCORE (for overall ranking)
@@ -580,8 +730,10 @@ export function useTerrainActivity(): Map<string, TerrainActivityInfo> {
             : `${meetupsToday.length} ${fr ? 'RDV aujourd\'hui' : 'meetups today'}`;
         } else if (weeklyActivityNow) {
           peakLabel = `${fr ? 'Activite habituelle' : 'Habitual activity'} ${dayNames[currentDow]} ~${currentHour}h`;
-        } else if (habitualScore > 10 && sameDayHourCount > 0) {
+        } else if (recordedActivitySameDayAndHour) {
           peakLabel = `${sameDayHourCount} ${fr ? 'partie(s) habituelles' : 'usual game(s)'} ${dayNames[currentDow]} ~${currentHour}h`;
+        } else if (globalPeakSameDayAndHour && gStats) {
+          peakLabel = `${fr ? 'Activite habituelle' : 'Habitual activity'} ${dayNames[currentDow]} ~${gStats.peakHour}h`;
         } else if (gStats && gStats.peakDowCount > 0 && gStats.peakHourCount > 0) {
           peakLabel = `${fr ? 'Pic' : 'Peak'}: ${dayNames[gStats.peakDow]} ~${gStats.peakHour}h (${gStats.peakHourCount})`;
         } else if (sameDayHourCount > 0) {
@@ -629,7 +781,7 @@ export function useTerrainActivity(): Map<string, TerrainActivityInfo> {
     });
 
     return scoreMap;
-  }, [terrains, matches, tournaments, challenges, terrainMeetupsMap, sponsoredChallengesMap, language, globalTerrainStats]);
+  }, [terrains, matches, tournaments, challenges, terrainMeetupsMap, terrainChallengesMap, sponsoredChallengesMap, language, globalTerrainStats]);
 
   return terrainActivityMap;
 }

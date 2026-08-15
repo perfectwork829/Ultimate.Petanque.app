@@ -12,6 +12,11 @@ import { useAppData } from '@/contexts/AppContext';
 import { getMyAmbassadorRecord, createSponsoredEvent, checkChallengeLimit } from '@/services/sponsoredEventService';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
+
+function toLocalDateKey(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
 const CHALLENGE_TYPES = [
   { id: '10_tirs', icon: 'track-changes' as const, color: '#2563EB' },
   { id: '10_tirs_sautee', icon: 'flight-takeoff' as const, color: '#D97706' },
@@ -95,7 +100,7 @@ export default function NewSponsoredEventScreen() {
       title: title.trim(),
       description: description.trim() || undefined,
       challengeType,
-      eventDate: eventDate.toISOString().split('T')[0],
+      eventDate: toLocalDateKey(eventDate),
       startTime: startDate.toISOString(),
       endTime: endDate.toISOString(),
       scope: selectedTerrainId ? 'terrain' : 'world',

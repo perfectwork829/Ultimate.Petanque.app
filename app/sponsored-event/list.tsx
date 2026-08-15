@@ -294,6 +294,15 @@ export default function SponsoredEventListScreen() {
           <Pressable style={s.joinBtn} onPress={handleOpenScanner}>
             <MaterialIcons name="qr-code-scanner" size={20} color="#FFF" />
           </Pressable>
+          <Pressable
+            style={[s.joinBtn, viewMode === 'cities' && { backgroundColor: 'rgba(255,255,255,0.35)' }]}
+            onPress={() => {
+              Haptics.selectionAsync();
+              setViewMode(viewMode === 'list' ? 'cities' : 'list');
+            }}
+          >
+            <MaterialIcons name={viewMode === 'cities' ? 'view-list' : 'location-city'} size={20} color="#FFF" />
+          </Pressable>
           <Pressable style={s.createBtn} onPress={() => router.push('/sponsored-event/new' as any)}>
             <MaterialIcons name="add" size={22} color="#FFF" />
           </Pressable>

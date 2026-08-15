@@ -74,6 +74,40 @@ function pickActivityDateKey(...values: any[]): string | null {
   return null;
 }
 
+
+function dateKeyToLocalNoon(key: string): Date | null {
+  const m = key.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return null;
+  return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 12, 0, 0, 0);
+}
+
+function isNextDayKey(dateKey: string | null, baseKey: string | null): boolean {
+  if (!dateKey || !baseKey) return false;
+  const d = dateKeyToLocalNoon(dateKey);
+  const b = dateKeyToLocalNoon(baseKey);
+  if (!d || !b) return false;
+  b.setDate(b.getDate() + 1);
+  return d.getFullYear() === b.getFullYear() && d.getMonth() === b.getMonth() && d.getDate() === b.getDate();
+}
+
+function getRegularChallengeActivityDateKey(c: any): string | null {
+  const explicitKey = pickActivityDateKey(c.activityDate, c.activity_date);
+  const createdKey = pickActivityDateKey(c.createdAt, c.created_at);
+  const updatedKey = pickActivityDateKey(c.updatedAt, c.updated_at);
+  const scheduledKey = pickActivityDateKey(c.date, c.eventDate, c.event_date);
+
+  if (explicitKey) return explicitKey;
+  if (isNextDayKey(scheduledKey, createdKey)) return createdKey;
+  if (isNextDayKey(scheduledKey, updatedKey)) return updatedKey;
+  return scheduledKey || createdKey || updatedKey;
+}
+
+function getSponsoredChallengeActivityDateKey(c: any): string | null {
+  // Prefer the precise scheduled start. event_date can be one day off if it was
+  // produced with toISOString().split('T')[0] from a native date picker.
+  return pickActivityDateKey(c.startTime, c.start_time, c.eventDate, c.event_date, c.createdAt, c.created_at);
+}
+
 function combineDateAndTime(baseDate?: string | null, timeValue?: string | null): Date | null {
   if (!baseDate && !timeValue) return null;
   if (timeValue) {
@@ -163,7 +197,7 @@ export default function TerrainActivityScreen() {
             .eq('terrain_id', id),
           supabase
             .from('sponsored_events')
-            .select('id, title, challenge_type, challenge_mode, event_date, start_time, end_time, terrain_id, status')
+            .select('id, title, challenge_type, challenge_mode, event_date, start_time, end_time, terrain_id, status, created_at')
             .eq('terrain_id', id)
             .neq('status', 'cancelled'),
         ]);
@@ -250,14 +284,7 @@ export default function TerrainActivityScreen() {
       if (seenChallengeIds.has(challengeId)) return;
       seenChallengeIds.add(challengeId);
 
-      const dateStr = pickActivityDateKey(
-        c.activityDate,
-        c.activity_date,
-        c.eventDate,
-        c.event_date,
-        c.date,
-        c.created_at
-      );
+      const dateStr = getRegularChallengeActivityDateKey(c);
 
       if (isSameViewedMonth(dateStr, viewYear, viewMonth)) {
         const entry = map.get(dateStr!);
@@ -265,7 +292,7 @@ export default function TerrainActivityScreen() {
           entry.challenges.push({
             id: c.id,
             type: c.type || c.challenge_type || 'challenge',
-            date: c.date || c.eventDate || c.event_date || dateStr!,
+            date: dateStr!,
             mode: c.mode || c.challenge_mode,
             title: c.title || c.name || getChallengeLabel(c.type || c.challenge_type, fr),
             totalShots: c.totalShots ?? c.total_shots,
@@ -280,14 +307,14 @@ export default function TerrainActivityScreen() {
     // Ambassador/sponsored challenges are stored in sponsored_events, not the
     // regular challenges array, so they must be added separately.
     sponsoredChallengesData.forEach((c: any) => {
-      const dateStr = pickActivityDateKey(c.event_date, c.eventDate, c.start_time, c.startTime);
+      const dateStr = getSponsoredChallengeActivityDateKey(c);
       if (isSameViewedMonth(dateStr, viewYear, viewMonth)) {
         const entry = map.get(dateStr!);
         if (entry) {
           entry.challenges.push({
             id: c.id,
             type: c.challenge_type || c.challengeType || 'challenge',
-            date: c.event_date || c.eventDate || dateStr!,
+            date: dateStr!,
             startTime: c.start_time || c.startTime || null,
             endTime: c.end_time || c.endTime || null,
             mode: c.challenge_mode || c.challengeMode,
