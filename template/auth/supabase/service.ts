@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { AuthUser, SendOTPOptions, SignUpResult, GoogleSignInResult } from '../types';
-import { safeSupabaseOperation, getSharedSupabaseClient } from '../../core/client';
+import { safeSupabaseOperation, getSharedSupabaseClient, setGoogleOnlySupabaseBypass } from '../../core/client';
 import { configManager } from '../../core/config';
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
@@ -314,7 +314,14 @@ export class AuthService {
       // Google-only login does not create or require a Supabase Auth session.
       // Prefer the native Google user saved by signInWithGoogle().
       const googleOnlyUser = await readStoredGoogleOnlyUser();
-      if (googleOnlyUser) return googleOnlyUser;
+      if (googleOnlyUser) {
+        setGoogleOnlySupabaseBypass(true);
+        return googleOnlyUser;
+      }
+
+      // No Google-only session is active, so email/password/OTP users may use
+      // the normal Supabase-backed path.
+      setGoogleOnlySupabaseBypass(false);
 
       // Keep existing email/password/OTP behavior as a fallback for users who may
       // already have a Supabase session. Google login itself no longer uses this.
@@ -358,6 +365,7 @@ export class AuthService {
   }
 
   async sendOTP(email: string, options: SendOTPOptions = {}) {
+    setGoogleOnlySupabaseBypass(false);
     try {
       const { shouldCreateUser = true, includeMagicLinkRedirect = false } = options;
       // Numeric OTP: do not pass emailRedirectTo (see Supabase passwordless OTP docs).
@@ -407,6 +415,7 @@ export class AuthService {
   }
 
   async verifyOTPAndLogin(email: string, otp: string, options?: { password?: string }) {
+    setGoogleOnlySupabaseBypass(false);
     try {
       const token = otp.replace(/\D/g, '');
       const emailNormalized = email.trim().toLowerCase();
@@ -553,6 +562,7 @@ export class AuthService {
   }
 
   async signUpWithPassword(email: string, password: string, metadata: Record<string, any> = {}): Promise<SignUpResult> {
+    setGoogleOnlySupabaseBypass(false);
     try {
       return await safeSupabaseOperation(async (client) => {
         const { data, error } = await withTimeout(
@@ -606,6 +616,7 @@ export class AuthService {
   }
 
   async signInWithPassword(email: string, password: string) {
+    setGoogleOnlySupabaseBypass(false);
     try {
       const emailNormalized = email.trim().toLowerCase();
 
@@ -656,6 +667,8 @@ export class AuthService {
 
   async logout() {
     try {
+      const googleOnlyUser = await readStoredGoogleOnlyUser();
+
       try {
         const nativeGoogle = getGoogleNativeSignInModule();
         await nativeGoogle?.GoogleSignin?.signOut?.();
@@ -666,6 +679,14 @@ export class AuthService {
       await clearStoredGoogleOnlyUser();
       notifyGoogleAuthSubscribers(null);
 
+      // A Google-only session must not touch Supabase, including during logout.
+      if (googleOnlyUser) {
+        // Keep the bypass enabled until a non-Google auth flow explicitly starts.
+        // React may still render one frame with the old Google user after notify().
+        return {};
+      }
+
+      setGoogleOnlySupabaseBypass(false);
       return await safeSupabaseOperation(async (client) => {
         const { error } = await withTimeout(
           client.auth.signOut(),
@@ -792,6 +813,9 @@ export class AuthService {
         idToken,
         accessToken: tokens?.accessToken || null,
       });
+      // Switch every captured app-level Supabase client to the no-op route before
+      // publishing the Google auth state to React.
+      setGoogleOnlySupabaseBypass(true);
       notifyGoogleAuthSubscribers(authUser);
 
       return { error: null };

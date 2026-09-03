@@ -9,6 +9,11 @@ import theme from '@/constants/theme';
 import { ensureDeviceBoundToAccount } from '@/services/deviceFingerprintService';
 import { useLanguage } from '@/hooks/useLanguage';
 import { hasRequiredPlayerCity } from '@/utils/playerLocationRequirement';
+import {
+  isGoogleOnlyProfileComplete,
+  isGoogleOnlyUserId,
+  loadGoogleOnlyProfile,
+} from '@/services/googleOnlyProfileService';
 
 const ONBOARDING_KEY = 'hasSeenOnboarding';
 const PENDING_DEVICE_BINDING_ALERT_KEY = '@pending_device_binding_alert';
@@ -160,6 +165,31 @@ function ProfileChecker() {
         } catch {
           // Do not block legitimate users on unexpected errors.
         }
+      }
+
+      // Google-only accounts do not have a Supabase profile/player row. Their
+      // express profile lives in AsyncStorage, so profile routing must stay local.
+      if (isGoogleOnlyUserId(user.id)) {
+        try {
+          const localProfile = await loadGoogleOnlyProfile(user.id);
+          if (!isGoogleOnlyProfileComplete(localProfile)) {
+            setNeedsOnboarding(true);
+          } else {
+            setNeedsOnboarding(false);
+            setNeedsConsent(false);
+            profileReadyRef.current = true;
+            if (pendingDeepLinkRef.current) {
+              const link = pendingDeepLinkRef.current;
+              pendingDeepLinkRef.current = null;
+              handleDeepLinkNavigation(link);
+            }
+          }
+        } catch {
+          setNeedsOnboarding(true);
+        } finally {
+          setChecking(false);
+        }
+        return;
       }
 
       try {

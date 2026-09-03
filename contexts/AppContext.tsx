@@ -87,6 +87,14 @@ import { addChallengeOp, updateChallengeOp, deleteChallengeOp } from '@/services
 import { addBoulesSetOp, updateBoulesSetOp, deleteBoulesSetOp, setPrimaryBoulesSetOp } from '@/services/boulesSetCrudService';
 import { updateRetentionStats } from '@/services/retentionNotificationService';
 import { triggerTrustScoreComputation, fetchLowTrustUsers, shouldSendWeeklyTrustTip, markWeeklyTrustTipSent, saveTrustScoreSnapshot, fetchTrustScore as fetchTrustScoreForSnapshot } from '@/services/trustScoreService';
+import {
+  isGoogleOnlyUserId,
+  loadGoogleOnlyProfile,
+  saveGoogleOnlyProfile,
+  makeGoogleOnlyPlayer,
+  loadGoogleOnlyPreferences,
+  saveGoogleOnlyPreferences,
+} from '@/services/googleOnlyProfileService';
 
 // ============================================
 // Context type
@@ -306,7 +314,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // ===== Premium & conflict helpers =====
   const setIsPremium = useCallback((val: boolean) => {
     setIsPremiumState(val);
-    if (user?.id) {
+    if (user?.id && !isGoogleOnlyUserId(user.id)) {
       supabase.from('user_profiles').update({ is_premium: val }).eq('id', user.id).then(() => {});
     }
   }, [user?.id, supabase]);
@@ -406,6 +414,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // ===== Cache loading =====
   useEffect(() => {
     if (!user?.id || cacheLoaded) return;
+    if (isGoogleOnlyUserId(user.id)) {
+      // Google-only data is account-scoped in its own local profile storage. Do
+      // not load the shared Supabase cache from another account.
+      setCacheLoaded(true);
+      return;
+    }
     const loadCache = async () => {
       try {
         const cached = await loadFromCache();
@@ -432,7 +446,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // ===== Persist player stats helper =====
   const persistPlayerStats = useCallback(async (allMatches: Match[], playerIds: string[]) => {
-    if (!user?.id) return;
+    if (!user?.id || isGoogleOnlyUserId(user.id)) return;
     const uniqueIds = [...new Set(playerIds)];
     for (const playerId of uniqueIds) {
       const player = players.find(p => p.id === playerId);
@@ -508,8 +522,39 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const updateMatch = async (id: string, updates: Partial<Match>) =>
     updateMatchOp(id, updates, { supabase, userId: user?.id, isConnected: isConnectedRef.current, matches, setMatches, persistPlayerStats });
 
-  const updatePlayer = async (id: string, updates: Partial<Player>) =>
-    updatePlayerOp(id, updates, { supabase, userId: user?.id, isConnected: isConnectedRef.current, setPlayers, sharedItemPermissions, players });
+  const updatePlayer = async (id: string, updates: Partial<Player>) => {
+    // The signed-in Google account has no Supabase UUID/player row. Keep edits to
+    // the current Google-only player entirely local so profile screens can still
+    // update without producing UUID/database errors.
+    if (user?.id && isGoogleOnlyUserId(user.id) && (id === user.id || players.some(p => p.id === id && p.userId === user.id))) {
+      const currentPlayer = players.find(p => p.id === id || p.userId === user.id);
+      setPlayers(prev => prev.map(p => {
+        if (p.id !== id && p.userId !== user.id) return p;
+        return {
+          ...p,
+          ...updates,
+          stats: updates.stats ? { ...p.stats, ...updates.stats } : p.stats,
+          location: updates.location ? { ...(p.location || { city: '', latitude: 0, longitude: 0 }), ...updates.location } : p.location,
+        };
+      }));
+
+      const existing = await loadGoogleOnlyProfile(user.id);
+      const nextCity = updates.city ?? updates.location?.city ?? existing?.city ?? currentPlayer?.city ?? '';
+      await saveGoogleOnlyProfile(user.id, {
+        username: updates.name ?? existing?.username ?? currentPlayer?.name ?? user.username ?? user.email?.split('@')[0] ?? 'Player',
+        role: updates.role ?? existing?.role ?? currentPlayer?.role ?? 'Milieu',
+        level: updates.level ?? existing?.level ?? currentPlayer?.level ?? 'Intermédiaire',
+        city: nextCity,
+        country: updates.country ?? existing?.country ?? currentPlayer?.country ?? 'France',
+        latitude: updates.location?.latitude ?? existing?.latitude ?? currentPlayer?.location?.latitude ?? 0,
+        longitude: updates.location?.longitude ?? existing?.longitude ?? currentPlayer?.location?.longitude ?? 0,
+        isPublic: updates.isPublic ?? existing?.isPublic ?? currentPlayer?.isPublic ?? true,
+      });
+      return;
+    }
+
+    return updatePlayerOp(id, updates, { supabase, userId: user?.id, isConnected: isConnectedRef.current, setPlayers, sharedItemPermissions, players });
+  };
 
   const updateClub = async (id: string, updates: Partial<Club>) =>
     updateClubOp(id, updates, { supabase, userId: user?.id, isConnected: isConnectedRef.current, clubs, setClubs, setTerrains, sharedItemPermissions });
@@ -577,7 +622,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // ===== Secondary data loader (shared items, boules sets, preferences) =====
   const loadSecondaryData = useCallback(async () => {
-    if (!user?.id || !isConnectedRef.current) return;
+    if (!user?.id || isGoogleOnlyUserId(user.id) || !isConnectedRef.current) return;
     console.log('Loading secondary data (shared items, boules sets, preferences)...');
     try {
       const [sharedWithMeRes, boulesSetsRes] = await Promise.all([
@@ -724,6 +769,31 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return;
     }
 
+    if (isGoogleOnlyUserId(user.id)) {
+      setLoading(true);
+      try {
+        const localProfile = await loadGoogleOnlyProfile(user.id);
+        setPlayers([makeGoogleOnlyPlayer(user, localProfile)]);
+        setClubs(EMPTY_CLUBS);
+        setTournaments(EMPTY_TOURNAMENTS);
+        setMatches(EMPTY_MATCHES);
+        setChallenges(EMPTY_CHALLENGES);
+        setTerrains(EMPTY_TERRAINS);
+        setBoulesSets([]);
+        setSharedItemPermissions({});
+        setSharedMatchIds([]);
+        setSharedChallengeIds([]);
+        setIsPremiumState(false);
+        setIsAdmin(false);
+        initialLoadDone.current = true;
+        secondaryLoadDone.current = true;
+        setIsOfflineMode(false);
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
     if (!isConnectedRef.current) {
       setIsOfflineMode(true);
       setLoading(false);
@@ -852,11 +922,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } finally {
       setLoading(false);
     }
-  }, [user?.id, supabase, scheduleSecondaryLoad]);
+  }, [user?.id, user?.username, user?.email, user?.created_at, supabase, scheduleSecondaryLoad]);
 
   // ===== Delta sync =====
   const loadDeltaData = useCallback(async () => {
-    if (!user?.id || !isConnectedRef.current || !initialLoadDone.current) return;
+    if (!user?.id || isGoogleOnlyUserId(user.id) || !isConnectedRef.current || !initialLoadDone.current) return;
 
     const lastSync = await getLastSyncTimestamp();
     if (!lastSync) {
@@ -940,7 +1010,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // IMPORTANT: This useEffect must be AFTER loadData/loadDeltaData definitions
   // to avoid TDZ errors in the dependency array on web bundlers.
   useEffect(() => {
-    if (justReconnected && user?.id) {
+    if (justReconnected && user?.id && !isGoogleOnlyUserId(user.id)) {
       console.log('Network restored - replaying offline queue then syncing...');
       setIsOfflineMode(false);
       (async () => {
@@ -979,7 +1049,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // Persist cache on state changes — longer debounce to reduce serialization overhead
   const cacheTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
-    if (!user?.id || !initialLoadDone.current) return;
+    if (!user?.id || isGoogleOnlyUserId(user.id) || !initialLoadDone.current) return;
     if (cacheTimerRef.current) clearTimeout(cacheTimerRef.current);
     cacheTimerRef.current = setTimeout(() => {
       saveToCache({ players, clubs, tournaments, matches, challenges, terrains });
@@ -993,6 +1063,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setFavoriteTerrainIds([]);
       setFavoriteClubIds([]);
       setPreferencesLoaded(false);
+      return;
+    }
+    if (isGoogleOnlyUserId(user.id)) {
+      const localPrefs = await loadGoogleOnlyPreferences(user.id);
+      setFavoriteTerrainIds(localPrefs.favoriteTerrainIds);
+      setFavoriteClubIds(localPrefs.favoriteClubIds);
+      setPreferencesLoaded(true);
       return;
     }
     try {
@@ -1019,6 +1096,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const savePreferences = useCallback(async (terrainIds: string[], clubIds: string[]) => {
     if (!user?.id) return;
+    if (isGoogleOnlyUserId(user.id)) {
+      await saveGoogleOnlyPreferences(user.id, terrainIds, clubIds);
+      return;
+    }
     try {
       const { error } = await supabase
         .from('user_preferences')
@@ -1073,7 +1154,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // Weekly Monday trust tip check
   useEffect(() => {
-    if (!user?.id || !isConnectedRef.current) return;
+    if (!user?.id || isGoogleOnlyUserId(user.id) || !isConnectedRef.current) return;
     const now = new Date();
     if (now.getDay() !== 1) return; // Only on Mondays
     const checkAndSendTrustTips = async () => {
@@ -1098,7 +1179,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // Auto-refresh: delta sync normally, full sync every Nth cycle
   useEffect(() => {
-    if (!user?.id) return;
+    if (!user?.id || isGoogleOnlyUserId(user.id)) return;
     const intervalMs = syncConfigRef.current.syncIntervalMs;
     if (intervalMs <= 0) {
       console.log('Battery saver mode: automatic sync disabled');
@@ -1120,7 +1201,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // Retry failed operations
   const retryFailedOps = useCallback(async (opIds?: string[]) => {
-    if (!user?.id || !isConnectedRef.current) return;
+    if (!user?.id || isGoogleOnlyUserId(user.id) || !isConnectedRef.current) return;
     const failedOps = await getFailedOperations();
     const toRetry = opIds ? failedOps.filter(op => opIds.includes(op.id)) : failedOps;
     if (toRetry.length === 0) return;

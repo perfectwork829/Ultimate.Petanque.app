@@ -31,6 +31,11 @@ import { trackAmbassadorEvent } from '@/services/ambassadorAnalyticsService';
 import { trackOnboardingStep } from '@/services/onboardingAnalyticsService';
 import LocationPicker, { LocationData } from '@/components/ui/LocationPicker';
 import { getPlayerCity, hasRequiredPlayerCity } from '@/utils/playerLocationRequirement';
+import {
+  isGoogleOnlyUserId,
+  loadGoogleOnlyProfile,
+  saveGoogleOnlyProfile,
+} from '@/services/googleOnlyProfileService';
 
 // ============================================
 // TYPES — Step order:
@@ -86,7 +91,7 @@ function ProgressDots({ current, total }: { current: number; total: number }) {
 export default function OnboardingScreen() {
   const { user } = useAuth();
   const { showAlert } = useAlert();
-  const { updatePlayer } = useAppActions();
+  const { updatePlayer, refreshData } = useAppActions();
   const { selfPlayer } = useAppData();
   const supabase = getSupabaseClient();
   const { t, language, setLanguage } = useLanguage();
@@ -165,12 +170,31 @@ export default function OnboardingScreen() {
     if (step === 10 && user?.id && !referralCode) loadOrCreateReferralCode();
   }, [step, user?.id]);
 
-  // Pre-fill express profile when returning (e.g. username set but city missing)
+  // Pre-fill express profile when returning (e.g. username set but city missing).
+  // Google-only users are loaded strictly from local storage and never from Supabase.
   useEffect(() => {
     if (step !== 9 || !user?.id) return;
     let cancelled = false;
     (async () => {
       try {
+        if (isGoogleOnlyUserId(user.id)) {
+          const localProfile = await loadGoogleOnlyProfile(user.id);
+          if (cancelled) return;
+          const name = localProfile?.username?.trim() || user.username?.trim();
+          if (name && !username.trim()) setUsername(name);
+          if (localProfile?.role && !role) setRole(localProfile.role);
+          if (localProfile?.city && !profileLocation.city?.trim()) {
+            setProfileLocation(prev => ({
+              ...prev,
+              city: localProfile.city,
+              country: localProfile.country || prev.country || 'France',
+              latitude: localProfile.latitude ?? prev.latitude,
+              longitude: localProfile.longitude ?? prev.longitude,
+            }));
+          }
+          return;
+        }
+
         const [{ data: profile }, { data: player }] = await Promise.all([
           supabase.from('user_profiles').select('username, role').eq('id', user.id).maybeSingle(),
           supabase.from('players').select('name, city, location, country, role').eq('user_id', user.id).order('created_at', { ascending: true }).limit(1).maybeSingle(),
@@ -266,6 +290,27 @@ export default function OnboardingScreen() {
     }
     setSaving(true);
     try {
+      // Native Google login is intentionally Supabase-free. Save the express
+      // profile locally, refresh AppContext from local storage, then go straight
+      // to the Home tab as requested.
+      if (user?.id && isGoogleOnlyUserId(user.id)) {
+        await saveGoogleOnlyProfile(user.id, {
+          username: username.trim(),
+          role: role || 'Milieu',
+          level: 'Intermédiaire',
+          city: profileLocation.city.trim(),
+          country: profileLocation.country || 'France',
+          latitude: profileLocation.latitude,
+          longitude: profileLocation.longitude,
+          isPublic: true,
+        });
+        await AsyncStorage.setItem(ONBOARDING_KEY, 'true');
+        await refreshData();
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        router.replace('/(tabs)');
+        return;
+      }
+
       const { error: profileError } = await supabase
         .from('user_profiles')
         .update({ username: username.trim(), role: role || 'Milieu', level: 'Intermédiaire' })
